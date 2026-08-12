@@ -1,6 +1,9 @@
 SHELL := /bin/bash
 
-.PHONY: run debug setup build test clean
+# Bumped by hand; `make package VERSION=1.1.0` overrides it for a one-off.
+VERSION := 1.0.0
+
+.PHONY: run debug setup build test clean package icon
 
 # Launch the menu bar app in the foreground; Ctrl-C to stop.
 run:
@@ -22,5 +25,15 @@ build:
 test:
 	swift test
 
+# Build OsumTimer.app and an installer .pkg under build/.
+package:
+	@VERSION=$(VERSION) ./scripts/package.sh
+
+# Just the icon, for looking at it without a full build.
+icon:
+	@mkdir -p build
+	@swift scripts/make-icon.swift build/OsumTimer.icns && echo "build/OsumTimer.icns"
+
 clean:
 	swift package clean
+	rm -rf build

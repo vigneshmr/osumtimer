@@ -44,6 +44,15 @@ final class SettingsWindow {
 private struct SettingsView: View {
     @Bindable private var preferences = Preferences.shared
 
+    /// Reads the bundle, so it can only disagree with the installer if the
+    /// plist does. A bundle-less `swift run` has no version at all.
+    private var version: String {
+        guard let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+            return "OsumTimer — development build"
+        }
+        return "OsumTimer \(short)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
@@ -62,6 +71,10 @@ private struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .onChange(of: preferences.appearance) { SettingsWindow.shared.applyAppearance() }
+
+            Text(version)
+                .font(Design.caption)
+                .foregroundStyle(Design.textFaint)
         }
         .padding(20)
         .frame(width: 360, alignment: .leading)

@@ -13,6 +13,10 @@ struct ParsedTimer: Equatable {
     /// What was typed, as typed. Reset hands it back to the editor so a timer
     /// can be reinstated from its own words rather than from a stale length.
     var input: String = ""
+    /// The same thing with the tag taken out — "@5pm" from "@5pm #therapy".
+    /// This is what recents keep, so reusing one re-resolves it instead of
+    /// replaying whatever length it worked out to the first time.
+    var expression: String = ""
 }
 
 /// A time of day, meaning its next occurrence — "@5pm" at 6pm means tomorrow.
@@ -70,7 +74,8 @@ enum Parser {
             tag: tag,
             echo: echo(for: duration),
             target: target,
-            input: raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            input: raw.trimmingCharacters(in: .whitespacesAndNewlines),
+            expression: text
         ))
     }
 

@@ -196,9 +196,12 @@ private struct DraftPanel: View {
 
     private func chips(_ count: Int) -> some View {
         HStack(spacing: 5) {
-            ForEach(store.recents.prefix(count), id: \.self) { duration in
-                Button(Parser.clock(for: duration)) {
-                    store.start(slotID, with: .init(duration: duration, tag: nil, echo: Parser.echo(for: duration)))
+            // Labelled and started from what was typed, whatever that was: a
+            // length replays as itself, a time of day resolves against the clock
+            // as it stands now rather than replaying a stale gap.
+            ForEach(store.recents.prefix(count), id: \.self) { expression in
+                Button(expression) {
+                    store.start(slotID, recent: expression)
                 }
                 .buttonStyle(.plain)
                 .font(Design.caption.monospacedDigit())

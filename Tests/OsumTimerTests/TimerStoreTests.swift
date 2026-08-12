@@ -165,6 +165,40 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertEqual(loaded.slots[0].draft, "")
     }
 
+    /// Recents keep the words, so reusing one resolves it afresh. The tag is
+    /// dropped: it belonged to that timer, not to the shortcut.
+    func testRecentsKeepTheExpressionAsTyped() {
+        // One slot, not two: drafts coalesce on load, so the second is added here.
+        let loaded = store(Snapshot(slots: [Slot()]))
+        loaded.start(loaded.slots[0].id, with: try! Parser.parse("@5pm #therapy").get())
+        loaded.start(loaded.addSlot(), with: try! Parser.parse("45m").get())
+
+        XCTAssertEqual(loaded.recents, ["45m", "@5pm"])
+    }
+
+    /// Starting from a recent "@5pm" re-resolves it rather than replaying the
+    /// length it happened to be the first time.
+    func testStartingARecentTargetResolvesAgainstTheClockNow() {
+        let loaded = store(Snapshot(slots: [Slot()]))
+        let id = loaded.slots[0].id
+
+        loaded.start(id, recent: "@5pm")
+        let timer = try! XCTUnwrap(loaded.slots[0].timer)
+
+        XCTAssertEqual(timer.target, ClockTarget(hour: 17, minute: 0))
+        let expected = ClockTarget(hour: 17, minute: 0).interval(from: Date())!
+        XCTAssertEqual(timer.remaining(), expected, accuracy: 2)
+    }
+
+    /// Recents used to be stored as seconds; an old file must still load, since
+    /// a decode failure would take the saved timers with it.
+    func testOldNumericRecentsStillDecode() throws {
+        let json = #"{"slots":[],"recents":[1500,600]}"#.data(using: .utf8)!
+        let snapshot = try JSONDecoder().decode(Snapshot.self, from: json)
+
+        XCTAssertEqual(snapshot.recents, ["25:00", "10:00"])
+    }
+
     func testResumeAfterResetSnapsToAWholeSecond() {
         var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
         timer.restart()

@@ -11,7 +11,8 @@ final class TimerStore {
     /// Creation order, never re-sorted — a menu bar item that moves is a menu
     /// bar item you have to hunt for.
     private(set) var slots: [Slot] = []
-    private(set) var recents: [TimeInterval] = []
+    /// Recent inputs as typed ("@5pm", "45m"), most recent first.
+    private(set) var recents: [String] = []
 
     /// Bumped once per second so views recompute; the real clock is `Date()`.
     private(set) var tick: Date = Date()
@@ -77,7 +78,7 @@ final class TimerStore {
         // Advance the shared clock with it, or views compare a brand-new end date
         // against a tick up to a second old and round up to 25:01 for a 25:00 timer.
         tick = Date()
-        rememberRecent(parsed.duration)
+        rememberRecent(parsed.expression)
         scheduleFire(slots[index])
         persist()
     }
@@ -196,10 +197,18 @@ final class TimerStore {
         tick = Date()
     }
 
-    private func rememberRecent(_ duration: TimeInterval) {
-        recents.removeAll { $0 == duration }
-        recents.insert(duration, at: 0)
+    private func rememberRecent(_ expression: String) {
+        guard !expression.isEmpty else { return }
+        recents.removeAll { $0 == expression }
+        recents.insert(expression, at: 0)
         recents = Array(recents.prefix(4))
+    }
+
+    /// Starts a slot from a remembered input, resolving it against the clock as
+    /// it stands now — the point of keeping the words rather than the length.
+    func start(_ id: UUID, recent expression: String) {
+        guard case .success(let parsed) = Parser.parse(expression) else { return }
+        start(id, with: parsed)
     }
 
     private func persist() {

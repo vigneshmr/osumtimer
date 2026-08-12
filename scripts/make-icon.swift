@@ -1,8 +1,12 @@
 // Draws the app icon and writes an .icns, with no design tools involved.
 //
-// The mark is the app's own progress ring: a thin white circle on the accent
-// blue, open at the top with the head sitting in the gap — the same thing the
-// menu bar draws, so the icon and the app agree.
+// The mark is a disc with a quarter cut out of it — a timer part-way through.
+//
+// One shape, two straight edges, no ornament: no stem, no hand, no tick marks.
+// Deliberately not the app's thin open ring either, which at icon size is the
+// power-button silhouette a dozen other apps already use. The cut quadrant says
+// "elapsed" on its own, and holds its meaning down to 16pt where any added
+// detail would only turn to mush.
 //
 // Usage: swift scripts/make-icon.swift <output.icns>
 
@@ -34,32 +38,29 @@ func drawIcon(size: Int) -> CGImage? {
     context.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
     context.fillPath()
 
-    // The ring, centred, opened at twelve o'clock.
-    let centre = CGPoint(x: scale / 2, y: scale / 2)
-    let ringRadius = scale * 0.26
-    let lineWidth = max(scale * 0.055, 1)
+    // Optically centred, not geometrically: removing the upper-right quadrant
+    // moves the mark's visual weight down and left, so the disc is nudged back
+    // toward the gap by a fraction of its radius.
+    let dialRadius = scale * 0.28
+    let centre = CGPoint(x: scale / 2 + dialRadius * 0.05, y: scale / 2 + dialRadius * 0.05)
+    let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
 
-    context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.95))
-    context.setLineWidth(lineWidth)
-    context.setLineCap(.round)
+    // The dial: a solid disc, so the wedge can be cut out of it in blue.
+    context.setFillColor(white)
+    context.addArc(center: centre, radius: dialRadius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+    context.fillPath()
+
+    // The wedge, swept clockwise from twelve — a quarter of the way round.
+    context.setFillColor(CGColor(red: accent.r, green: accent.g, blue: accent.b, alpha: 1))
+    context.move(to: centre)
     context.addArc(
         center: centre,
-        radius: ringRadius,
-        startAngle: .pi / 2 + 0.42,
-        endAngle: .pi / 2 - 0.42,
-        clockwise: false
+        radius: dialRadius,
+        startAngle: .pi / 2,
+        endAngle: 0,
+        clockwise: true
     )
-    context.strokePath()
-
-    // The head, filling the gap it left.
-    context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-    context.addArc(
-        center: CGPoint(x: centre.x, y: centre.y + ringRadius),
-        radius: lineWidth * 0.75,
-        startAngle: 0,
-        endAngle: .pi * 2,
-        clockwise: false
-    )
+    context.closePath()
     context.fillPath()
 
     return context.makeImage()

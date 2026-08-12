@@ -14,6 +14,9 @@ final class StatusItemController {
     private var items: [UUID: NSStatusItem] = [:]
     /// Last string rendered per item, so an unchanged "1:23" never repaints.
     private var titles: [UUID: String] = [:]
+    /// Label currently drawn per item; absent means the item carries none.
+    private var labels: [UUID: String] = [:]
+    private let labelCache = LabelCache()
     /// Maps a clicked button back to the slot it belongs to.
     private var slotsByButton: [ObjectIdentifier: UUID] = [:]
     private let popover = NSPopover()
@@ -34,6 +37,15 @@ final class StatusItemController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePanel() }
         }
+
+        NotificationCenter.default.addObserver(
+            forName: .osumOpenSettings, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.closePanel()  // the popover is transient; it would close anyway
+                SettingsWindow.shared.show()
+            }
+        }
     }
 
     // MARK: - Observation
@@ -44,6 +56,8 @@ final class StatusItemController {
         withObservationTracking {
             _ = store.tick
             _ = store.slots
+            _ = Preferences.shared.showLabelsInMenuBar  // toggling it redraws the bar
+            _ = Preferences.shared.appearance           // and so does restyling it
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.sync()
@@ -55,6 +69,12 @@ final class StatusItemController {
     // MARK: - Sync
 
     private func sync() {
+        // Set on the popover rather than on NSApp: forcing the whole app into an
+        // appearance would drag the status items with it, and those have to keep
+        // following the menu bar or their text stops matching everything beside it.
+        let appearance = Preferences.shared.appearance.appearance
+        if popover.appearance != appearance { popover.appearance = appearance }
+
         let slots = store.slots
         let live = Set(slots.map(\.id))
 
@@ -78,7 +98,9 @@ final class StatusItemController {
             // the scarcest resource here — macOS hides items that do not fit.
             if titles[slot.id] != nil || isNew {
                 titles[slot.id] = nil
+                labels[slot.id] = nil
                 button.attributedTitle = NSAttributedString(string: "")
+                button.title = ""
                 button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "New timer")
                 button.imagePosition = .imageOnly
             }
@@ -88,21 +110,42 @@ final class StatusItemController {
         let done = timer.hasFired(at: store.tick)
         let title = Parser.clock(for: timer.remaining(at: store.tick))
 
-        // Only touch the button when the rendered text actually changes.
-        if titles[slot.id] != title {
-            titles[slot.id] = title
-            button.attributedTitle = NSAttributedString(string: title, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: Design.menuBarSize, weight: .medium),
-                .foregroundColor: color(done: done, paused: timer.isPaused),
-            ])
+        // Only touch the button when what it renders actually changes; the state
+        // is part of that, since it decides how the title is coloured.
+        let rendered = "\(title)|\(done)|\(timer.isPaused)"
+        if titles[slot.id] != rendered {
+            titles[slot.id] = rendered
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: Design.menuBarSize, weight: .medium)
+
+            if let tint = tint(done: done, paused: timer.isPaused) {
+                button.attributedTitle = NSAttributedString(
+                    string: title, attributes: [.font: button.font!, .foregroundColor: tint]
+                )
+            } else {
+                // No attributed string in the ordinary case: a hardcoded colour
+                // cannot invert when the item is clicked and drawn highlighted,
+                // which leaves the countdown unreadable against the highlight.
+                // A plain title lets AppKit colour it, including that inversion.
+                button.attributedTitle = NSAttributedString(string: "")
+                button.title = title
+            }
         }
 
-        // Text only. The ring costs ~18pt per item, and menu bar width is the
-        // scarcest resource in the app — macOS hides items that do not fit, so a
-        // decorated item is one you may never see. The ring lives in the panel.
-        if button.image != nil {
-            button.image = nil
-            button.imagePosition = .noImage
+        // The label rides as an image, not as part of the title: its light-on-dark
+        // chip needs fixed colours, and an attributed title would freeze the
+        // countdown's colour too, which is what made paused timers unreadable.
+        // Otherwise text only — menu bar width is the scarcest resource in the
+        // app, and macOS hides items that do not fit.
+        let label = Preferences.shared.showLabelsInMenuBar ? timer.tag : nil
+        if labels[slot.id] != label {
+            labels[slot.id] = label
+            if let label {
+                button.image = labelCache.image(for: label)
+                button.imagePosition = .imageLeading
+            } else {
+                button.image = nil
+                button.imagePosition = .noImage
+            }
         }
     }
 
@@ -117,10 +160,15 @@ final class StatusItemController {
         return item
     }
 
-    private func color(done: Bool, paused: Bool) -> NSColor {
-        if done { return NSColor(Design.accent) }
-        // Otherwise defer to the system's menu bar tint, which adapts on its own.
-        return paused ? .secondaryLabelColor : .labelColor
+    /// The colour a state needs, or nil to let the system tint it — which is the
+    /// right answer whenever the text carries no state of its own.
+    ///
+    /// Paused deliberately gets no colour. `secondaryLabelColor` resolves against
+    /// the app's appearance rather than the menu bar's, so on a dark bar it came
+    /// out near-black and the countdown all but disappeared. Pause is shown with
+    /// a template glyph instead, which AppKit tints the same way it tints its own.
+    private func tint(done: Bool, paused: Bool) -> NSColor? {
+        done ? NSColor(Design.accent) : nil
     }
 
     // MARK: - Panel
@@ -165,7 +213,52 @@ final class StatusItemController {
     }
 }
 
+/// Draws a tag as a light-on-dark chip, cached per tag.
+///
+/// An image, not styled text: the chip's colours are fixed by design, and an
+/// attributed title would take the countdown's colour out of the system's hands
+/// along with it.
+@MainActor
+private final class LabelCache {
+    private var cache: [String: NSImage] = [:]
+
+    func image(for tag: String) -> NSImage? {
+        if let cached = cache[tag] { return cached }
+
+        let renderer = ImageRenderer(content: LabelChip(tag: tag))
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        guard let cgImage = renderer.cgImage else { return nil }
+
+        let size = NSSize(
+            width: CGFloat(cgImage.width) / renderer.scale,
+            height: CGFloat(cgImage.height) / renderer.scale
+        )
+        let image = NSImage(cgImage: cgImage, size: size)
+        cache[tag] = image
+        return image
+    }
+}
+
+private struct LabelChip: View {
+    let tag: String
+
+    var body: some View {
+        Text(tag.prefix(1).uppercased() + tag.dropFirst())
+            .font(.system(size: Design.menuBarSize - 2, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.black.opacity(0.55))
+            )
+            .padding(1)
+    }
+}
+
 extension Notification.Name {
     /// Posted by the panel when it wants the popover dismissed.
     static let osumClosePanel = Notification.Name("OsumTimer.closePanel")
+    /// Posted by a panel's gear; any of them opens the one settings window.
+    static let osumOpenSettings = Notification.Name("OsumTimer.openSettings")
 }

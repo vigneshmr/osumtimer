@@ -120,10 +120,12 @@ final class TimerStore {
         persist()
     }
 
+    /// Reset: full duration again, and paused. The pending alarm goes with it —
+    /// a reset timer is not counting down, so it must not fire.
     func restart(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        cancelFire(id)
         slots[index].timer!.restart()
-        scheduleFire(slots[index])
         persist()
     }
 

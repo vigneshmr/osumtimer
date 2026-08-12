@@ -71,7 +71,11 @@ struct ProgressRing: View {
                     style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.9), value: progress)
+                // Only while running, where it smooths one-second steps into a
+                // sweep. Pausing or resetting jumps the progress somewhere else
+                // entirely, and animating that sends the head hopping around the
+                // ring — so those land instantly.
+                .animation(paused ? nil : .linear(duration: 0.9), value: progress)
         }
         .frame(width: size, height: size)
     }

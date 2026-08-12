@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store.start(store.slots[0].id, with: .init(duration: 1500, tag: "focus", echo: "25 min"))
             store.start(store.addSlot(), with: .init(duration: 600, tag: nil, echo: "10 min"))
             let first = store.slots[0].id
+            if ProcessInfo.processInfo.environment["OSUMTIMER_DEMO"] == "paused" {
+                store.togglePause(first)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.statusItems?.openPanel(for: first)
             }

@@ -9,14 +9,22 @@ struct SlotView: View {
     let slotID: UUID
     @Environment(TimerStore.self) private var store
 
+    /// What the user has typed at a running timer. Non-empty means they are
+    /// rewriting its duration, so the panel turns back into the draft editor —
+    /// typing at a timer drafts a new one rather than nudging the live one.
+    @State private var typed = ""
+
     private var slot: Slot? { store.slot(slotID) }
 
     var body: some View {
         VStack(spacing: 0) {
+            // The running panel keeps its own field while you type, rather than
+            // swapping in the draft one: handing first responder between two
+            // fields mid-keystroke drops everything after the first character.
             if let timer = slot?.timer {
-                RunningPanel(slotID: slotID, timer: timer, now: store.tick)
+                RunningPanel(slotID: slotID, timer: timer, now: store.tick, typed: $typed)
             } else {
-                DraftPanel(slotID: slotID)
+                DraftPanel(slotID: slotID, seed: $typed)
             }
             Divider().overlay(Design.hairline)
             footer
@@ -45,6 +53,21 @@ struct SlotView: View {
             .buttonStyle(.plain)
 
             Spacer()
+
+            // Every panel carries it, and they all open the same window — the
+            // settings are the app's, not this timer's.
+            Button {
+                NotificationCenter.default.post(name: .osumOpenSettings, object: nil)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(Design.caption)
+                    .foregroundStyle(Design.textFaint)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
+            .accessibilityLabel("Settings")
+            .padding(.trailing, 12)
 
             if canQuit {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
@@ -82,6 +105,9 @@ struct SlotView: View {
 /// An empty item: type a duration and it becomes this item's countdown.
 private struct DraftPanel: View {
     let slotID: UUID
+    /// Characters typed at a running timer, which opened this editor. Cleared
+    /// when the edit is committed or abandoned.
+    @Binding var seed: String
     @Environment(TimerStore.self) private var store
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -104,7 +130,15 @@ private struct DraftPanel: View {
         .padding(.horizontal, Design.gutter)
         .padding(.top, 13)
         .padding(.bottom, 11)
-        .onAppear { focused = true }
+        .onAppear {
+            text = seed
+            focused = true
+        }
+        // Deleting back to nothing abandons the edit: a timer that was running
+        // is still running, so show it again rather than stranding a blank field.
+        .onChange(of: text) { _, new in
+            if new.isEmpty { seed = "" }
+        }
     }
 
     /// Live feedback: you see how the input was read before committing to it.
@@ -121,7 +155,7 @@ private struct DraftPanel: View {
             .font(Design.caption)
             .foregroundStyle(Design.textSecondary)
         case .failure(let error) where error != .empty:
-            Text(message(for: error))
+            Text(draftMessage(for: error))
                 .font(Design.caption)
                 .foregroundStyle(Design.textFaint)
         default:
@@ -129,37 +163,42 @@ private struct DraftPanel: View {
         }
     }
 
+    @ViewBuilder
     private var recents: some View {
-        HStack(spacing: 5) {
-            if store.recents.isEmpty {
-                Text("try 25, 1.5h, 1:30, @5pm")
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textFaint)
-            } else {
-                ForEach(store.recents, id: \.self) { duration in
-                    Button(Parser.clock(for: duration)) {
-                        store.start(slotID, with: .init(duration: duration, tag: nil, echo: Parser.echo(for: duration)))
-                    }
-                    .buttonStyle(.plain)
-                    .font(Design.caption.monospacedDigit())
-                    .foregroundStyle(Design.textSecondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Design.surfaceRaised)
-                    )
-                }
+        if store.recents.isEmpty {
+            Text("try 25, 1.5h, 1:30, @5pm")
+                .font(Design.caption)
+                .foregroundStyle(Design.textFaint)
+        } else {
+            // As many chips as the panel can hold at their natural size. A fixed
+            // count cannot work: four short ones fit where three "1:00:00" do
+            // not, and squeezing them truncates every chip to "23:…".
+            ViewThatFits(in: .horizontal) {
+                chips(4)
+                chips(3)
+                chips(2)
+                chips(1)
             }
         }
     }
 
-    private func message(for error: ParseError) -> String {
-        switch error {
-        case .unrecognized: "not a duration"
-        case .notPositive: "must be more than zero"
-        case .tooLong: "longer than a week"
-        case .empty: ""
+    private func chips(_ count: Int) -> some View {
+        HStack(spacing: 5) {
+            ForEach(store.recents.prefix(count), id: \.self) { duration in
+                Button(Parser.clock(for: duration)) {
+                    store.start(slotID, with: .init(duration: duration, tag: nil, echo: Parser.echo(for: duration)))
+                }
+                .buttonStyle(.plain)
+                .font(Design.caption.monospacedDigit())
+                .foregroundStyle(Design.textSecondary)
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Design.surfaceRaised)
+                )
+            }
         }
     }
 
@@ -167,6 +206,17 @@ private struct DraftPanel: View {
         guard case .success(let value)? = parsed else { return }
         store.start(slotID, with: value)
         text = ""
+        seed = ""
+    }
+}
+
+/// Both panels parse the same input, so they say the same thing when it is wrong.
+private func draftMessage(for error: ParseError) -> String {
+    switch error {
+    case .unrecognized: "not a duration"
+    case .notPositive: "must be more than zero"
+    case .tooLong: "longer than a week"
+    case .empty: ""
     }
 }
 
@@ -176,32 +226,109 @@ private struct RunningPanel: View {
     let slotID: UUID
     let timer: TimerItem
     let now: Date
+    /// What has been typed over the countdown. Empty means the timer is just
+    /// being watched; anything else means a new duration is being written.
+    @Binding var typed: String
     @Environment(TimerStore.self) private var store
+    @FocusState private var capturing: Bool
 
     private var done: Bool { timer.hasFired(at: now) }
+    private var editing: Bool { !typed.isEmpty }
+
+    private var parsed: Result<ParsedTimer, ParseError>? {
+        typed.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Parser.parse(typed)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 9) {
-                ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused, size: 20)
+        VStack(spacing: 10) {
+            // The field is always here, holding first responder whether or not
+            // anything has been typed — it is simply invisible under the
+            // countdown until it has content. Typing therefore never changes
+            // which view owns the keyboard.
+            ZStack(alignment: .leading) {
+                TextField("", text: $typed)
+                    .textFieldStyle(.plain)
+                    .font(Design.input)
+                    .foregroundStyle(Design.textPrimary)
+                    .focused($capturing)
+                    .onSubmit(submit)
+                    .opacity(editing ? 1 : 0)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(Parser.clock(for: timer.remaining(at: now)))
-                        .font(.system(size: 25, weight: .light).monospacedDigit())
-                        .foregroundStyle(done ? Design.accent : Design.textPrimary)
-
-                    // Duration, state and tag share one line. Given a tag its own
-                    // column, the panel has to be wide enough for a tag that is
-                    // usually absent — and then sits mostly empty.
-                    status
-                }
-
-                Spacer(minLength: 0)
+                if !editing { countdown }
             }
+            .frame(maxWidth: .infinity)
 
-            HStack(spacing: 7) {
+            if editing {
+                hint
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                controls
+            }
+        }
+        .padding(.horizontal, Design.gutter)
+        .padding(.top, 12)
+        .padding(.bottom, 11)
+        .onAppear { capturing = true }
+    }
+
+    /// The ring, the clock and its status line — what you see when not typing.
+    private var countdown: some View {
+        HStack(spacing: 9) {
+            ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused, size: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                // Sized to the full duration — the longest string this timer
+                // will ever show — so nothing shifts when 10:00 becomes 9:59.
+                // Monospaced digits alone do not cover it: the character
+                // count changes too.
+                Text(Parser.clock(for: timer.remaining(at: now)))
+                    .font(.system(size: 25, weight: .light).monospacedDigit())
+                    .foregroundStyle(done ? Design.accent : Design.textPrimary)
+                    .frame(minWidth: clockWidth, alignment: .leading)
+
+                // Duration, state and tag share one line. Given a tag its own
+                // column, the panel has to be wide enough for a tag that is
+                // usually absent — and then sits mostly empty.
+                status
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Live feedback on what is being typed, in place of the controls.
+    @ViewBuilder
+    private var hint: some View {
+        switch parsed {
+        case .success(let value):
+            HStack(spacing: 5) {
+                Text(value.echo)
+                if let tag = value.tag {
+                    Text("#\(tag)").foregroundStyle(Design.accent)
+                }
+            }
+            .font(Design.caption)
+            .foregroundStyle(Design.textSecondary)
+        case .failure(let error) where error != .empty:
+            Text(draftMessage(for: error))
+                .font(Design.caption)
+                .foregroundStyle(Design.textFaint)
+        default:
+            Text("replaces this timer")
+                .font(Design.caption)
+                .foregroundStyle(Design.textFaint)
+        }
+    }
+
+    private func submit() {
+        guard case .success(let value)? = parsed else { return }
+        store.start(slotID, with: value)
+        typed = ""
+    }
+
+    private var controls: some View {
+        HStack(spacing: 7) {
                 if done {
-                    GlyphButton(symbol: "arrow.clockwise", help: "Restart", size: 28, prominent: true) {
+                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28, prominent: true) {
                         store.restart(slotID)
                     }
                 } else {
@@ -209,7 +336,7 @@ private struct RunningPanel: View {
                                 help: timer.isPaused ? "Resume" : "Pause", size: 28) {
                         store.togglePause(slotID)
                     }
-                    GlyphButton(symbol: "arrow.clockwise", help: "Restart", size: 28) { store.restart(slotID) }
+                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28) { store.restart(slotID) }
                 }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.
@@ -217,10 +344,7 @@ private struct RunningPanel: View {
                     store.clear(slotID)
                 }
             }
-        }
-        .padding(.horizontal, Design.gutter)
-        .padding(.top, 12)
-        .padding(.bottom, 11)
+            .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -238,8 +362,16 @@ private struct RunningPanel: View {
         .font(Design.caption)
     }
 
+    /// Width of the full-duration clock string, measured in the same font.
+    private var clockWidth: CGFloat {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 25, weight: .light)
+        let widest = Parser.clock(for: timer.duration) as NSString
+        return ceil(widest.size(withAttributes: [.font: font]).width)
+    }
+
     private var word: String {
         if done { return "done" }
+        if timer.isReady { return "ready · \(Parser.echo(for: timer.duration))" }
         if timer.isPaused { return "paused · \(Parser.echo(for: timer.duration))" }
         return Parser.echo(for: timer.duration)
     }

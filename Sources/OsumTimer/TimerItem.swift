@@ -53,6 +53,10 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     var isPaused: Bool { pausedRemaining != nil }
 
+    /// Held at its full duration: reset, or never started. Mechanically paused,
+    /// but "paused" describes a timer stopped partway — this one has not run.
+    var isReady: Bool { pausedRemaining == duration }
+
     func remaining(at now: Date = Date()) -> TimeInterval {
         if let pausedRemaining { return pausedRemaining }
         guard let endsAt else { return 0 }
@@ -81,8 +85,10 @@ struct TimerItem: Identifiable, Codable, Equatable {
         self.pausedRemaining = nil
     }
 
-    mutating func restart(at now: Date = Date()) {
-        pausedRemaining = nil
-        endsAt = Self.onSecond(now.addingTimeInterval(duration))
+    /// Back to the full duration and held there: reset puts the timer where it
+    /// started, it does not start it. Pressing play is the separate decision.
+    mutating func restart() {
+        pausedRemaining = duration
+        endsAt = nil
     }
 }

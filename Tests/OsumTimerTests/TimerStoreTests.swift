@@ -79,16 +79,42 @@ final class TimerStoreTests: XCTestCase {
         }
     }
 
-    func testRestartAndResumeAlsoSnap() {
-        var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
-        timer.restart(at: Date(timeIntervalSinceReferenceDate: 2_000.42))
-        var end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
-        XCTAssertEqual(end, end.rounded(), accuracy: 0.0001)
+    /// Reset returns the full duration and holds it there — no ticking, and no
+    /// end date left behind that could still fire.
+    func testResetRewindsAndStops() {
+        var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000))
+        timer.restart()
 
-        timer.pause(at: Date(timeIntervalSinceReferenceDate: 2_100.17))
+        XCTAssertTrue(timer.isPaused)
+        XCTAssertNil(timer.endsAt)
+        // Whenever you look at it afterwards, it still reads the full duration.
+        XCTAssertEqual(timer.remaining(at: Date(timeIntervalSinceReferenceDate: 5_000)), 600)
+        XCTAssertFalse(timer.hasFired(at: Date(timeIntervalSinceReferenceDate: 99_000)))
+    }
+
+    /// A reset timer reads "ready", not "paused" — paused means stopped partway.
+    func testResetIsReadyButPausedPartwayIsNot() {
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        var timer = TimerItem(duration: 600, now: start)
+
+        timer.pause(at: start.addingTimeInterval(120))
+        XCTAssertFalse(timer.isReady)
+
+        timer.restart()
+        XCTAssertTrue(timer.isReady)
+
+        timer.resume(at: start.addingTimeInterval(300))
+        XCTAssertFalse(timer.isReady, "a running timer is never ready")
+    }
+
+    func testResumeAfterResetSnapsToAWholeSecond() {
+        var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
+        timer.restart()
         timer.resume(at: Date(timeIntervalSinceReferenceDate: 2_200.83))
-        end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
+
+        let end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
         XCTAssertEqual(end, end.rounded(), accuracy: 0.0001)
+        XCTAssertFalse(timer.isPaused)
     }
 
     /// Deleting the last timer reuses its slot, so the menu bar item stays put

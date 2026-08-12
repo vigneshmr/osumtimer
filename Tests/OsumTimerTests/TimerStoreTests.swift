@@ -138,6 +138,33 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertEqual(timer.remaining(at: Date(timeIntervalSinceReferenceDate: 9_999)), 600)
     }
 
+    /// Reset on an "@3pm" timer hands the words back rather than leaving a
+    /// stopped timer counting the distance to tomorrow's 3pm.
+    func testResetOnATargetTimerReturnsItToADraft() {
+        let loaded = store(Snapshot(slots: [Slot()]))
+        let id = loaded.slots[0].id
+        let parsed = try! Parser.parse("@3pm #focus").get()
+        loaded.start(id, with: parsed)
+        XCTAssertNotNil(loaded.slots[0].timer)
+
+        loaded.restart(id)
+
+        XCTAssertNil(loaded.slots[0].timer, "the countdown is gone")
+        XCTAssertEqual(loaded.slots[0].draft, "@3pm #focus", "its words are waiting in the editor")
+    }
+
+    /// The draft survives the panel closing, which is why it lives in the store.
+    func testDraftIsKeptOnTheSlot() {
+        let loaded = store(Snapshot(slots: [Slot()]))
+        let id = loaded.slots[0].id
+
+        loaded.setDraft(id, "@5pm")
+        XCTAssertEqual(loaded.slots[0].draft, "@5pm")
+
+        loaded.setDraft(id, "")
+        XCTAssertEqual(loaded.slots[0].draft, "")
+    }
+
     func testResumeAfterResetSnapsToAWholeSecond() {
         var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
         timer.restart()

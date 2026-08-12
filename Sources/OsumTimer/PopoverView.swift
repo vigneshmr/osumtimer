@@ -109,16 +109,26 @@ private struct DraftPanel: View {
     /// when the edit is committed or abandoned.
     @Binding var seed: String
     @Environment(TimerStore.self) private var store
-    @State private var text = ""
     @FocusState private var focused: Bool
 
+    /// The field's text lives in the store, so closing the panel mid-edit and
+    /// reopening it finds the words still there.
+    private var text: Binding<String> {
+        Binding(
+            get: { store.slot(slotID)?.draft ?? "" },
+            set: { store.setDraft(slotID, $0) }
+        )
+    }
+
     private var parsed: Result<ParsedTimer, ParseError>? {
-        text.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Parser.parse(text)
+        text.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty
+            ? nil
+            : Parser.parse(text.wrappedValue)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            TextField("45m", text: $text)
+            TextField("45m", text: text)
                 .textFieldStyle(.plain)
                 .font(Design.input)
                 .foregroundStyle(Design.textPrimary)
@@ -131,12 +141,14 @@ private struct DraftPanel: View {
         .padding(.top, 13)
         .padding(.bottom, 11)
         .onAppear {
-            text = seed
+            // Characters typed at a running timer arrive here; anything already
+            // in the slot is an edit in progress and wins.
+            if text.wrappedValue.isEmpty, !seed.isEmpty { text.wrappedValue = seed }
             focused = true
         }
         // Deleting back to nothing abandons the edit: a timer that was running
         // is still running, so show it again rather than stranding a blank field.
-        .onChange(of: text) { _, new in
+        .onChange(of: text.wrappedValue) { _, new in
             if new.isEmpty { seed = "" }
         }
     }
@@ -205,7 +217,7 @@ private struct DraftPanel: View {
     private func submit() {
         guard case .success(let value)? = parsed else { return }
         store.start(slotID, with: value)
-        text = ""
+        text.wrappedValue = ""
         seed = ""
     }
 }
@@ -325,14 +337,12 @@ private struct RunningPanel: View {
         typed = ""
     }
 
-    /// Rewind and stop — and for a timer written as a time of day, hand its own
-    /// words back to the editor. "@2pm" resets to two o'clock, whenever that now
-    /// is; the length it was set for went stale as soon as the clock moved.
+    /// The store decides what reset means: a plain duration rewinds in place,
+    /// while a timer written as a time of day goes back to being a draft holding
+    /// its own words.
     private func reset() {
+        typed = ""
         store.restart(slotID)
-        if timer.target != nil, let input = timer.input {
-            typed = input
-        }
     }
 
     private var controls: some View {

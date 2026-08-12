@@ -8,10 +8,15 @@ import Foundation
 struct Slot: Identifiable, Codable, Equatable {
     let id: UUID
     var timer: TimerItem?
+    /// Text sitting in this slot's editor. Held here rather than in the view
+    /// because the popover rebuilds its content every time it opens — anything
+    /// kept in view state is lost the moment you click away.
+    var draft: String = ""
 
-    init(id: UUID = UUID(), timer: TimerItem? = nil) {
+    init(id: UUID = UUID(), timer: TimerItem? = nil, draft: String = "") {
         self.id = id
         self.timer = timer
+        self.draft = draft
     }
 
     var isDraft: Bool { timer == nil }

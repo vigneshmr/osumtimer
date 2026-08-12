@@ -124,10 +124,29 @@ final class TimerStore {
 
     /// Reset: full duration again, and paused. The pending alarm goes with it —
     /// a reset timer is not counting down, so it must not fire.
+    ///
+    /// A timer written as a time of day resets to its own words instead: the
+    /// slot goes back to being a draft holding "@3pm", ready to start again.
+    /// Rewinding it in place would leave a stopped timer showing the distance to
+    /// the *next* 3pm, which after 3pm is most of a day — a number nobody asked
+    /// for and could not have meant.
     func restart(_ id: UUID) {
-        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         cancelFire(id)
-        slots[index].timer!.restart()
+
+        if timer.target != nil, let input = timer.input, !input.isEmpty {
+            slots[index].timer = nil
+            slots[index].draft = input
+        } else {
+            slots[index].timer!.restart()
+        }
+        persist()
+    }
+
+    /// Keeps what is being typed with the slot, so it survives the panel closing.
+    func setDraft(_ id: UUID, _ text: String) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].draft != text else { return }
+        slots[index].draft = text
         persist()
     }
 

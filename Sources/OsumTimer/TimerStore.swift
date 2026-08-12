@@ -80,10 +80,19 @@ final class TimerStore {
         persist()
     }
 
-    /// Removes the item entirely. The last one becomes a draft rather than
+    /// Removes the item entirely. The last one is emptied in place instead of
     /// vanishing, so the app is never left with no menu bar presence.
+    ///
+    /// Emptied, not replaced: tearing down the status item and building a new
+    /// one makes the menu bar flicker and can land the item somewhere else.
+    /// Reusing the slot keeps the same item exactly where it was.
     func remove(_ id: UUID) {
         cancelFire(id)
+        if slots.count == 1, slots[0].id == id {
+            slots[0].timer = nil
+            persist()
+            return
+        }
         slots.removeAll { $0.id == id }
         if slots.isEmpty { slots = [Slot()] }
         persist()
@@ -121,7 +130,16 @@ final class TimerStore {
     // MARK: - Ticking
 
     private func startDisplayTick() {
-        let timer = Foundation.Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+        // Fire just after each whole second, matching the boundary every timer's
+        // end date is snapped to, so all countdowns change digit together — and
+        // a hair late rather than a hair early, or a label can repaint on the
+        // wrong side of its own rollover and show the same second twice.
+        let nextSecond = Date().timeIntervalSinceReferenceDate.rounded(.down) + 1.01
+        let timer = Foundation.Timer(
+            fire: Date(timeIntervalSinceReferenceDate: nextSecond),
+            interval: 1,
+            repeats: true
+        ) { [weak self] _ in
             Task { @MainActor in self?.tick = Date() }
         }
         // .common keeps countdowns moving while a menu or resize is tracking.

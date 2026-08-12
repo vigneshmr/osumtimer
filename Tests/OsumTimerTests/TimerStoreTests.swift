@@ -58,6 +58,61 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertNil(loaded.slots[0].timer)
     }
 
+    /// Timers started at any sub-second phase share one rollover boundary, so
+    /// their menu bar digits change together.
+    func testEndDatesSnapToWholeSeconds() {
+        let base = Date(timeIntervalSinceReferenceDate: 1_000.0)
+        for offset in [0.0, 0.13, 0.4, 0.61, 0.99] {
+            let timer = TimerItem(duration: 600, now: base.addingTimeInterval(offset))
+            let end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
+            XCTAssertEqual(end, end.rounded(), accuracy: 0.0001, "offset \(offset) left a fractional end date")
+        }
+    }
+
+    /// Snapping must never round a timer up: a 25:00 timer reads "25:00" the
+    /// instant it starts, from any sub-second phase.
+    func testTimerNeverRendersASecondTooHigh() {
+        for offset in [0.0, 0.13, 0.4, 0.61, 0.99] {
+            let now = Date(timeIntervalSinceReferenceDate: 1_000 + offset)
+            let timer = TimerItem(duration: 1500, now: now)
+            XCTAssertEqual(Parser.clock(for: timer.remaining(at: now)), "25:00", "offset \(offset)")
+        }
+    }
+
+    func testRestartAndResumeAlsoSnap() {
+        var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
+        timer.restart(at: Date(timeIntervalSinceReferenceDate: 2_000.42))
+        var end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
+        XCTAssertEqual(end, end.rounded(), accuracy: 0.0001)
+
+        timer.pause(at: Date(timeIntervalSinceReferenceDate: 2_100.17))
+        timer.resume(at: Date(timeIntervalSinceReferenceDate: 2_200.83))
+        end = try! XCTUnwrap(timer.endsAt).timeIntervalSinceReferenceDate
+        XCTAssertEqual(end, end.rounded(), accuracy: 0.0001)
+    }
+
+    /// Deleting the last timer reuses its slot, so the menu bar item stays put
+    /// rather than being torn down and rebuilt.
+    func testRemovingTheLastSlotEmptiesItInPlace() {
+        let only = Slot(timer: TimerItem(duration: 600))
+        let loaded = store(Snapshot(slots: [only]))
+
+        loaded.remove(only.id)
+
+        XCTAssertEqual(loaded.slots.map(\.id), [only.id])
+        XCTAssertNil(loaded.slots[0].timer)
+    }
+
+    func testRemovingOneOfSeveralDropsItEntirely() {
+        let first = Slot(timer: TimerItem(duration: 600))
+        let second = Slot(timer: TimerItem(duration: 900))
+        let loaded = store(Snapshot(slots: [first, second]))
+
+        loaded.remove(first.id)
+
+        XCTAssertEqual(loaded.slots.map(\.id), [second.id])
+    }
+
     func testEmptySnapshotStillYieldsOneSlot() {
         XCTAssertEqual(store(Snapshot()).slots.count, 1)
     }

@@ -29,6 +29,9 @@ struct SlotView: View {
         HStack(spacing: 0) {
             Button {
                 store.addSlot()
+                // The new item appears in the menu bar, which is where you have
+                // to go next anyway — leaving this panel open just covers it.
+                NotificationCenter.default.post(name: .osumClosePanel, object: nil)
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
@@ -43,13 +46,36 @@ struct SlotView: View {
 
             Spacer()
 
-            Button("Quit") { NSApplication.shared.terminate(nil) }
+            if canQuit {
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.plain)
+                    .font(Design.caption)
+                    .foregroundStyle(Design.textFaint)
+            } else {
+                Button {
+                    store.remove(slotID)
+                    // This item is gone; the panel that belonged to it goes too.
+                    NotificationCenter.default.post(name: .osumClosePanel, object: nil)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(Design.caption)
+                        .foregroundStyle(Design.textFaint)
+                        .contentShape(.rect)
+                }
                 .buttonStyle(.plain)
-                .font(Design.caption)
-                .foregroundStyle(Design.textFaint)
+                .help("Remove this timer")
+                .accessibilityLabel("Remove this timer")
+            }
         }
         .padding(.horizontal, Design.gutter)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
+    }
+
+    /// Quitting is only offered when this is the last item and it holds nothing:
+    /// with siblings in the bar, or a timer set here, the useful action is to
+    /// remove just this one — quitting would take the others down with it.
+    private var canQuit: Bool {
+        store.slots.count == 1 && slot?.timer == nil
     }
 }
 
@@ -155,28 +181,22 @@ private struct RunningPanel: View {
     private var done: Bool { timer.hasFired(at: now) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 10) {
-                ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused, size: 22)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused, size: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(Parser.clock(for: timer.remaining(at: now)))
-                        .font(.system(size: 26, weight: .light).monospacedDigit())
+                        .font(.system(size: 25, weight: .light).monospacedDigit())
                         .foregroundStyle(done ? Design.accent : Design.textPrimary)
 
-                    Text(status)
-                        .font(Design.caption)
-                        .foregroundStyle(done ? Design.accent : Design.textSecondary)
+                    // Duration, state and tag share one line. Given a tag its own
+                    // column, the panel has to be wide enough for a tag that is
+                    // usually absent — and then sits mostly empty.
+                    status
                 }
 
-                Spacer()
-
-                if let tag = timer.tag {
-                    Text("#\(tag)")
-                        .font(Design.label)
-                        .foregroundStyle(Design.textSecondary)
-                        .lineLimit(1)
-                }
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: 7) {
@@ -191,22 +211,34 @@ private struct RunningPanel: View {
                     }
                     GlyphButton(symbol: "arrow.clockwise", help: "Restart", size: 28) { store.restart(slotID) }
                 }
-                // Clear keeps the item and its place in the bar; Remove takes both.
+                // Clear keeps the item and its place in the bar. Removing it
+                // outright is the footer's trash, in every panel state.
                 GlyphButton(symbol: "xmark", help: "Clear — keeps this menu bar item", size: 28) {
                     store.clear(slotID)
-                }
-                Spacer()
-                GlyphButton(symbol: "trash", help: "Remove this menu bar item", size: 28) {
-                    store.remove(slotID)
                 }
             }
         }
         .padding(.horizontal, Design.gutter)
-        .padding(.top, 13)
-        .padding(.bottom, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 11)
     }
 
-    private var status: String {
+    @ViewBuilder
+    private var status: some View {
+        HStack(spacing: 4) {
+            Text(word)
+                .foregroundStyle(done ? Design.accent : Design.textSecondary)
+            if let tag = timer.tag {
+                Text("#\(tag)")
+                    .foregroundStyle(Design.textFaint)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .font(Design.caption)
+    }
+
+    private var word: String {
         if done { return "done" }
         if timer.isPaused { return "paused · \(Parser.echo(for: timer.duration))" }
         return Parser.echo(for: timer.duration)

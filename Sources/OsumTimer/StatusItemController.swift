@@ -26,6 +26,14 @@ final class StatusItemController {
 
         observe()
         sync()
+
+        // SwiftUI has no handle on the popover that hosts it; the panel asks to
+        // be dismissed through this instead of reaching into AppKit itself.
+        NotificationCenter.default.addObserver(
+            forName: .osumClosePanel, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePanel() }
+        }
     }
 
     // MARK: - Observation
@@ -130,6 +138,11 @@ final class StatusItemController {
         show(id, from: sender)
     }
 
+    func closePanel() {
+        popover.performClose(nil)
+        openSlot = nil
+    }
+
     /// Opens a slot's panel without a click — used by the demo hook to make the
     /// panel inspectable in a screenshot.
     func openPanel(for id: UUID) {
@@ -150,4 +163,9 @@ final class StatusItemController {
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()
     }
+}
+
+extension Notification.Name {
+    /// Posted by the panel when it wants the popover dismissed.
+    static let osumClosePanel = Notification.Name("OsumTimer.closePanel")
 }

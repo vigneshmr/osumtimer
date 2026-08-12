@@ -13,7 +13,10 @@ enum DebugRender {
         // A scratch store, so a render never touches real saved timers.
         let store = TimerStore(store: Persistence(filename: "render-preview.json"))
         let running = store.slots[0].id
-        store.start(running, with: .init(duration: 1500, tag: "deepwork", echo: "25 min"))
+        // `OSUMTIMER_RENDER_INPUT="167h #a-very-long-tag"` renders worst-case content.
+        let input = ProcessInfo.processInfo.environment["OSUMTIMER_RENDER_INPUT"] ?? "25m #deepwork"
+        let parsed = (try? Parser.parse(input).get()) ?? .init(duration: 1500, tag: nil, echo: "25 min")
+        store.start(running, with: parsed)
         let draft = store.addSlot()
 
         render(SlotView(slotID: running).environment(store), to: path)

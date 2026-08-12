@@ -82,8 +82,11 @@ final class ParserTests: XCTestCase {
 }
 
 final class TimerItemTests: XCTestCase {
+    /// End dates snap to whole seconds so every timer ticks on the same
+    /// boundary; starting from a whole second keeps these expectations exact.
+    private let now = Date(timeIntervalSinceReferenceDate: Date().timeIntervalSinceReferenceDate.rounded())
+
     func testRemainingIsDerivedFromAbsoluteEndDate() {
-        let now = Date()
         let timer = TimerItem(duration: 60, now: now)
         XCTAssertEqual(timer.remaining(at: now), 60, accuracy: 0.01)
         XCTAssertEqual(timer.remaining(at: now.addingTimeInterval(45)), 15, accuracy: 0.01)
@@ -91,7 +94,6 @@ final class TimerItemTests: XCTestCase {
     }
 
     func testPauseFreezesAndResumeShiftsTheEndDate() {
-        let now = Date()
         var timer = TimerItem(duration: 60, now: now)
         timer.pause(at: now.addingTimeInterval(20))
         XCTAssertTrue(timer.isPaused)
@@ -105,7 +107,6 @@ final class TimerItemTests: XCTestCase {
     }
 
     func testProgress() {
-        let now = Date()
         let timer = TimerItem(duration: 100, now: now)
         XCTAssertEqual(timer.progress(at: now), 0, accuracy: 0.01)
         XCTAssertEqual(timer.progress(at: now.addingTimeInterval(75)), 0.75, accuracy: 0.01)

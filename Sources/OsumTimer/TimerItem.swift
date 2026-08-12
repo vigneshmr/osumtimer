@@ -34,9 +34,21 @@ struct TimerItem: Identifiable, Codable, Equatable {
         self.id = UUID()
         self.tag = tag
         self.duration = duration
-        self.endsAt = now.addingTimeInterval(duration)
+        self.endsAt = Self.onSecond(now.addingTimeInterval(duration))
         self.pausedRemaining = nil
         self.createdAt = now
+    }
+
+    /// End dates are snapped to a whole second so every timer's display rolls
+    /// over on the same boundary — two timers started 400ms apart would
+    /// otherwise flip their digits 400ms apart.
+    ///
+    /// Down, not to nearest: the label rounds remaining time up, so an end date
+    /// even slightly past `now + duration` renders a 25:00 timer as "25:01".
+    /// The cost is firing up to a second early, which no one can perceive; a
+    /// wrong number on screen at the moment you set the timer is obvious.
+    private static func onSecond(_ date: Date) -> Date {
+        Date(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate.rounded(.down))
     }
 
     var isPaused: Bool { pausedRemaining != nil }
@@ -65,12 +77,12 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     mutating func resume(at now: Date = Date()) {
         guard let pausedRemaining else { return }
-        endsAt = now.addingTimeInterval(pausedRemaining)
+        endsAt = Self.onSecond(now.addingTimeInterval(pausedRemaining))
         self.pausedRemaining = nil
     }
 
     mutating func restart(at now: Date = Date()) {
         pausedRemaining = nil
-        endsAt = now.addingTimeInterval(duration)
+        endsAt = Self.onSecond(now.addingTimeInterval(duration))
     }
 }

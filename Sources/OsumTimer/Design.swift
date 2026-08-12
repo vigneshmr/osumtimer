@@ -25,11 +25,18 @@ enum Design {
 
     // Type — one family, four sizes. Numerals are always monospaced so digits
     // never reflow while counting down.
-    static let input = Font.system(size: 15, weight: .regular)
-    static let clock = Font.system(size: 15, weight: .medium).monospacedDigit()
-    static let label = Font.system(size: 12, weight: .medium)
-    static let caption = Font.system(size: 11, weight: .regular)
-    static let menuBar = Font.system(size: 12.5, weight: .medium).monospacedDigit()
+    static let input = Font.system(size: 17, weight: .regular)
+    static let clock = Font.system(size: 17, weight: .medium).monospacedDigit()
+    static let label = Font.system(size: 14, weight: .medium)
+    static let caption = Font.system(size: 13, weight: .regular)
+    static let menuBar = Font.system(size: menuBarSize, weight: .medium).monospacedDigit()
+
+    // The menu bar title is drawn with AppKit, so its size lives here as a
+    // number that both the SwiftUI font above and StatusItemController can use.
+    // Deliberately not scaled with the popover type: this text sits beside the
+    // clock and other status items, so it takes the system's own menu bar size
+    // and follows it if the user changes it.
+    static let menuBarSize: CGFloat = NSFont.menuBarFont(ofSize: 0).pointSize
 }
 
 extension NSColor {
@@ -69,26 +76,38 @@ struct ProgressRing: View {
 }
 
 /// A borderless glyph button — the only button style in the app.
+///
+/// Icon-only: labels do not fit four abreast at the panel's width, and a clipped
+/// word ("Re…", "Cl…") reads worse than no word. The name lives in the tooltip,
+/// which is also what carries it to VoiceOver.
 struct GlyphButton: View {
     var symbol: String
     var help: String
+    var size: CGFloat = 20
+    var prominent = false
     var action: () -> Void
 
     @State private var hovering = false
 
+    private var foreground: Color {
+        if prominent { return Design.accent }
+        return hovering ? Design.textPrimary : Design.textSecondary
+    }
+
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(hovering ? Design.textPrimary : Design.textFaint)
-                .frame(width: 20, height: 20)
+                .font(.system(size: size * 0.45, weight: .semibold))
+                .foregroundStyle(foreground)
+                .frame(width: size, height: size)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(hovering ? Design.hairline : .clear)
+                    RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
+                        .fill(hovering ? Design.hairline : Design.surfaceRaised)
                 )
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
+        .accessibilityLabel(help)
     }
 }

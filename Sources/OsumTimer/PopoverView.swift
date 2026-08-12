@@ -1,10 +1,61 @@
 import SwiftUI
 
-/// The one surface: a field at the top, timers beneath it.
+/// The panel behind a single menu bar item.
 ///
-/// The field is focused the moment the popover opens, so the fastest path to a
-/// timer is hotkey → type → Return, with no pointer involved.
-struct PopoverView: View {
+/// An item starts empty: this shows a field, you type, and that same item becomes
+/// the countdown. Once running, the panel shows the timer's own controls. Every
+/// state carries "+ Add timer", which spawns another empty item beside it.
+struct SlotView: View {
+    let slotID: UUID
+    @Environment(TimerStore.self) private var store
+
+    private var slot: Slot? { store.slot(slotID) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let timer = slot?.timer {
+                RunningPanel(slotID: slotID, timer: timer, now: store.tick)
+            } else {
+                DraftPanel(slotID: slotID)
+            }
+            Divider().overlay(Design.hairline)
+            footer
+        }
+        .frame(width: Design.popoverWidth)
+        .background(Design.surface)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 0) {
+            Button {
+                store.addSlot()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Add timer")
+                }
+                .font(Design.caption)
+                .foregroundStyle(Design.accent)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Button("Quit") { NSApplication.shared.terminate(nil) }
+                .buttonStyle(.plain)
+                .font(Design.caption)
+                .foregroundStyle(Design.textFaint)
+        }
+        .padding(.horizontal, Design.gutter)
+        .padding(.vertical, 10)
+    }
+}
+
+/// An empty item: type a duration and it becomes this item's countdown.
+private struct DraftPanel: View {
+    let slotID: UUID
     @Environment(TimerStore.self) private var store
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -14,23 +65,7 @@ struct PopoverView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            field
-            if !store.timers.isEmpty {
-                Divider().overlay(Design.hairline)
-                list
-            }
-            footer
-        }
-        .frame(width: Design.popoverWidth)
-        .background(Design.surface)
-        .onAppear { focused = true }
-    }
-
-    // MARK: - Field
-
-    private var field: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             TextField("45m", text: $text)
                 .textFieldStyle(.plain)
                 .font(Design.input)
@@ -41,12 +76,12 @@ struct PopoverView: View {
             hint
         }
         .padding(.horizontal, Design.gutter)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top, 13)
+        .padding(.bottom, 11)
+        .onAppear { focused = true }
     }
 
-    /// Live feedback under the field. This is what makes natural-language input
-    /// feel trustworthy rather than a guess — you see the reading before you commit.
+    /// Live feedback: you see how the input was read before committing to it.
     @ViewBuilder
     private var hint: some View {
         switch parsed {
@@ -64,11 +99,11 @@ struct PopoverView: View {
                 .font(Design.caption)
                 .foregroundStyle(Design.textFaint)
         default:
-            recentsRow
+            recents
         }
     }
 
-    private var recentsRow: some View {
+    private var recents: some View {
         HStack(spacing: 5) {
             if store.recents.isEmpty {
                 Text("try 25, 1.5h, 1:30, @5pm")
@@ -77,7 +112,7 @@ struct PopoverView: View {
             } else {
                 ForEach(store.recents, id: \.self) { duration in
                     Button(Parser.clock(for: duration)) {
-                        store.add(.init(duration: duration, tag: nil, echo: Parser.echo(for: duration)))
+                        store.start(slotID, with: .init(duration: duration, tag: nil, echo: Parser.echo(for: duration)))
                     }
                     .buttonStyle(.plain)
                     .font(Design.caption.monospacedDigit())
@@ -104,88 +139,77 @@ struct PopoverView: View {
 
     private func submit() {
         guard case .success(let value)? = parsed else { return }
-        store.add(value)
+        store.start(slotID, with: value)
         text = ""
-    }
-
-    // MARK: - List
-
-    private var list: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(store.sorted) { timer in
-                    TimerRow(timer: timer, now: store.tick)
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .frame(maxHeight: 232)
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 10) {
-            if store.timers.count > 1 {
-                Button("Clear all", action: store.removeAll)
-                    .buttonStyle(.plain)
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textFaint)
-            }
-            Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.plain)
-                .font(Design.caption)
-                .foregroundStyle(Design.textFaint)
-        }
-        .padding(.horizontal, Design.gutter)
-        .padding(.vertical, 9)
-        .overlay(alignment: .top) { Divider().overlay(Design.hairline) }
     }
 }
 
-/// One countdown. Controls appear on hover, so the resting state is just a
-/// ring, a time, and a tag.
-struct TimerRow: View {
+/// A live item: its countdown and its own controls. Nothing here refers to any
+/// other timer — this panel belongs to one menu bar item.
+private struct RunningPanel: View {
+    let slotID: UUID
     let timer: TimerItem
     let now: Date
-
     @Environment(TimerStore.self) private var store
-    @State private var hovering = false
 
     private var done: Bool { timer.hasFired(at: now) }
 
     var body: some View {
-        HStack(spacing: 9) {
-            ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused)
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
+                ProgressRing(progress: timer.progress(at: now), paused: timer.isPaused, size: 22)
 
-            Text(Parser.clock(for: timer.remaining(at: now)))
-                .font(Design.clock)
-                .foregroundStyle(done ? Design.accent : (timer.isPaused ? Design.textSecondary : Design.textPrimary))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Parser.clock(for: timer.remaining(at: now)))
+                        .font(.system(size: 26, weight: .light).monospacedDigit())
+                        .foregroundStyle(done ? Design.accent : Design.textPrimary)
 
-            if let tag = timer.tag {
-                Text("#\(tag)")
-                    .font(Design.label)
-                    .foregroundStyle(Design.textSecondary)
-                    .lineLimit(1)
+                    Text(status)
+                        .font(Design.caption)
+                        .foregroundStyle(done ? Design.accent : Design.textSecondary)
+                }
+
+                Spacer()
+
+                if let tag = timer.tag {
+                    Text("#\(tag)")
+                        .font(Design.label)
+                        .foregroundStyle(Design.textSecondary)
+                        .lineLimit(1)
+                }
             }
 
-            Spacer(minLength: 4)
-
-            if hovering {
+            HStack(spacing: 7) {
                 if done {
-                    GlyphButton(symbol: "arrow.clockwise", help: "Restart") { store.restart(timer.id) }
+                    GlyphButton(symbol: "arrow.clockwise", help: "Restart", size: 28, prominent: true) {
+                        store.restart(slotID)
+                    }
                 } else {
                     GlyphButton(symbol: timer.isPaused ? "play.fill" : "pause.fill",
-                                help: timer.isPaused ? "Resume" : "Pause") { store.togglePause(timer.id) }
+                                help: timer.isPaused ? "Resume" : "Pause", size: 28) {
+                        store.togglePause(slotID)
+                    }
+                    GlyphButton(symbol: "arrow.clockwise", help: "Restart", size: 28) { store.restart(slotID) }
                 }
-                GlyphButton(symbol: "xmark", help: "Remove") { store.remove(timer.id) }
+                // Clear keeps the item and its place in the bar; Remove takes both.
+                GlyphButton(symbol: "xmark", help: "Clear — keeps this menu bar item", size: 28) {
+                    store.clear(slotID)
+                }
+                Spacer()
+                GlyphButton(symbol: "trash", help: "Remove this menu bar item", size: 28) {
+                    store.remove(slotID)
+                }
             }
         }
         .padding(.horizontal, Design.gutter)
-        .padding(.vertical, 7)
-        .background(hovering ? Design.surfaceRaised : .clear)
-        .contentShape(.rect)
-        .onHover { hovering = $0 }
+        .padding(.top, 13)
+        .padding(.bottom, 12)
     }
+
+    private var status: String {
+        if done { return "done" }
+        if timer.isPaused { return "paused · \(Parser.echo(for: timer.duration))" }
+        return Parser.echo(for: timer.duration)
+    }
+
 }

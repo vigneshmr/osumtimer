@@ -1,17 +1,19 @@
 import Foundation
 import Observation
 
-/// Single source of truth for every countdown, plus the one tick that drives the UI.
+/// Single source of truth. One slot in, one menu bar item out — always.
 ///
-/// One shared 1s tick recomputes all rows. Firing does not ride on that tick —
-/// each timer gets its own precise wake-up so alerts are never up to a second late.
+/// One shared 1s tick recomputes every label. Firing does not ride that tick:
+/// each live timer gets its own precise wake-up, so alerts are never late.
 @Observable
 @MainActor
 final class TimerStore {
-    private(set) var timers: [TimerItem] = []
+    /// Creation order, never re-sorted — a menu bar item that moves is a menu
+    /// bar item you have to hunt for.
+    private(set) var slots: [Slot] = []
     private(set) var recents: [TimeInterval] = []
 
-    /// Bumped once per second so views recompute; the actual clock is `Date()`.
+    /// Bumped once per second so views recompute; the real clock is `Date()`.
     private(set) var tick: Date = Date()
 
     private var displayTimer: Foundation.Timer?
@@ -24,65 +26,95 @@ final class TimerStore {
         self.store = store
 
         let snapshot = store.load()
-        // Anything that expired while we were closed is stale — don't alarm on launch.
-        self.timers = snapshot.timers.filter { !$0.hasFired() }
+        // Untouched drafts carry no information, so they are dropped on launch:
+        // all of them when some real timer survives — any item can spawn another,
+        // so a draft earns its menu bar width only when nothing else is there —
+        // otherwise all but the first, leaving exactly one way back in.
+        // "Draft" means draft as saved: a slot whose countdown expired below
+        // still keeps its item, so a finished timer stays visible.
+        let hasTimer = snapshot.slots.contains { !$0.isDraft }
+        var keptDraft = false
+        let deduped = snapshot.slots.filter { slot in
+            guard slot.isDraft else { return true }
+            if hasTimer || keptDraft { return false }
+            keptDraft = true
+            return true
+        }
+        // A timer that expired while we were closed is stale: keep the item,
+        // drop its countdown, so the app never alarms about yesterday on launch.
+        self.slots = deduped.map { slot in
+            var slot = slot
+            if let timer = slot.timer, timer.hasFired() { slot.timer = nil }
+            return slot
+        }
         self.recents = snapshot.recents
+        // There is always at least one item, or the app has no way back in.
+        if slots.isEmpty { slots = [Slot()] }
 
         startDisplayTick()
-        for timer in timers { scheduleFire(timer) }
+        for slot in slots { scheduleFire(slot) }
     }
 
-    /// Sorted for display: soonest to fire first, paused timers last.
-    var sorted: [TimerItem] {
-        timers.sorted { lhs, rhs in
-            if lhs.isPaused != rhs.isPaused { return !lhs.isPaused }
-            return lhs.remaining(at: tick) < rhs.remaining(at: tick)
-        }
-    }
+    func slot(_ id: UUID) -> Slot? { slots.first { $0.id == id } }
 
-    /// The timer the menu bar shows.
-    var leading: TimerItem? { sorted.first { !$0.isPaused } ?? sorted.first }
+    // MARK: - Slot lifecycle
 
-    // MARK: - Commands
-
+    /// The "+ Add timer" command: a new, empty menu bar item.
     @discardableResult
-    func add(_ parsed: ParsedTimer) -> TimerItem {
-        let timer = TimerItem(duration: parsed.duration, tag: parsed.tag)
-        timers.append(timer)
-        rememberRecent(parsed.duration)
-        scheduleFire(timer)
+    func addSlot() -> UUID {
+        let slot = Slot()
+        slots.append(slot)
         persist()
-        return timer
+        return slot.id
     }
 
+    /// Turns a draft into a countdown — the same item, now ticking.
+    func start(_ id: UUID, with parsed: ParsedTimer) {
+        guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
+        slots[index].timer = TimerItem(duration: parsed.duration, tag: parsed.tag)
+        // Advance the shared clock with it, or views compare a brand-new end date
+        // against a tick up to a second old and round up to 25:01 for a 25:00 timer.
+        tick = Date()
+        rememberRecent(parsed.duration)
+        scheduleFire(slots[index])
+        persist()
+    }
+
+    /// Removes the item entirely. The last one becomes a draft rather than
+    /// vanishing, so the app is never left with no menu bar presence.
     func remove(_ id: UUID) {
         cancelFire(id)
-        timers.removeAll { $0.id == id }
+        slots.removeAll { $0.id == id }
+        if slots.isEmpty { slots = [Slot()] }
         persist()
     }
 
-    func removeAll() {
-        for timer in timers { cancelFire(timer.id) }
-        timers.removeAll()
+    /// Empties the item back to its input state, keeping its place in the bar.
+    func clear(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
+        cancelFire(id)
+        slots[index].timer = nil
         persist()
     }
+
+    // MARK: - Timer commands
 
     func togglePause(_ id: UUID) {
-        guard let index = timers.firstIndex(where: { $0.id == id }) else { return }
-        if timers[index].isPaused {
-            timers[index].resume()
-            scheduleFire(timers[index])
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        if slots[index].timer!.isPaused {
+            slots[index].timer!.resume()
+            scheduleFire(slots[index])
         } else {
-            timers[index].pause()
+            slots[index].timer!.pause()
             cancelFire(id)
         }
         persist()
     }
 
     func restart(_ id: UUID) {
-        guard let index = timers.firstIndex(where: { $0.id == id }) else { return }
-        timers[index].restart()
-        scheduleFire(timers[index])
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        slots[index].timer!.restart()
+        scheduleFire(slots[index])
         persist()
     }
 
@@ -92,23 +124,22 @@ final class TimerStore {
         let timer = Foundation.Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick = Date() }
         }
-        // .common keeps the countdown moving while a menu or resize is tracking.
+        // .common keeps countdowns moving while a menu or resize is tracking.
         RunLoop.main.add(timer, forMode: .common)
         displayTimer = timer
     }
 
-    private func scheduleFire(_ timer: TimerItem) {
-        cancelFire(timer.id)
-        guard let endsAt = timer.endsAt else { return }
-        let delay = max(0, endsAt.timeIntervalSinceNow)
+    private func scheduleFire(_ slot: Slot) {
+        cancelFire(slot.id)
+        guard let endsAt = slot.timer?.endsAt else { return }
 
         let source = DispatchSource.makeTimerSource(queue: .main)
-        source.schedule(deadline: .now() + delay, leeway: .milliseconds(50))
+        source.schedule(deadline: .now() + max(0, endsAt.timeIntervalSinceNow), leeway: .milliseconds(50))
         source.setEventHandler { [weak self] in
-            Task { @MainActor in self?.fire(timer.id) }
+            Task { @MainActor in self?.fire(slot.id) }
         }
         source.resume()
-        fireTimers[timer.id] = source
+        fireTimers[slot.id] = source
     }
 
     private func cancelFire(_ id: UUID) {
@@ -116,11 +147,11 @@ final class TimerStore {
     }
 
     private func fire(_ id: UUID) {
-        guard let timer = timers.first(where: { $0.id == id }) else { return }
+        guard let timer = slot(id)?.timer else { return }
         cancelFire(id)
         notifier.fire(tag: timer.tag, duration: timer.duration)
-        // The row stays, reading 0:00, until dismissed — a timer that vanishes
-        // the instant it fires leaves you unsure whether it ever ran.
+        // The item stays, reading 0:00, until you deal with it — an item that
+        // clears itself leaves you unsure whether it ever ran.
         tick = Date()
     }
 
@@ -131,6 +162,6 @@ final class TimerStore {
     }
 
     private func persist() {
-        store.save(.init(timers: timers, recents: recents))
+        store.save(.init(slots: slots, recents: recents))
     }
 }

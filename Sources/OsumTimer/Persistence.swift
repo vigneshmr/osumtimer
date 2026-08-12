@@ -1,9 +1,10 @@
 import Foundation
 
-/// Timers survive a relaunch. Because state is absolute end-dates, a restored
-/// timer is simply still correct — no elapsed-time bookkeeping required.
+/// Items survive a relaunch — both their order and their countdowns. Because
+/// state is absolute end-dates, a restored timer is simply still correct; no
+/// elapsed-time bookkeeping required.
 struct Snapshot: Codable {
-    var timers: [TimerItem] = []
+    var slots: [Slot] = []
     var recents: [TimeInterval] = []
 }
 

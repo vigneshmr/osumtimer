@@ -1,5 +1,22 @@
 import Foundation
 
+/// One menu bar item, for its whole life.
+///
+/// A slot exists before it has a duration: you get an empty item, type into it,
+/// and that same item becomes the countdown. `timer == nil` is the draft state.
+/// Slots keep their creation order so an item never jumps around the menu bar.
+struct Slot: Identifiable, Codable, Equatable {
+    let id: UUID
+    var timer: TimerItem?
+
+    init(id: UUID = UUID(), timer: TimerItem? = nil) {
+        self.id = id
+        self.timer = timer
+    }
+
+    var isDraft: Bool { timer == nil }
+}
+
 /// One countdown.
 ///
 /// State is an absolute `endsAt` date rather than a decrementing counter, so the

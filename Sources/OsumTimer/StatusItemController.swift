@@ -2,36 +2,27 @@ import AppKit
 import SwiftUI
 import Observation
 
-/// Owns the menu bar: one permanent "home" item that opens the input popover,
-/// plus one status item per running timer, side by side.
+/// Owns the menu bar: exactly one status item per slot, in creation order.
 ///
-/// `MenuBarExtra` is a static scene, so it cannot express "N items, created and
-/// destroyed as timers come and go" — that requires driving `NSStatusItem`
-/// directly. This class is the only AppKit surface in the app.
+/// There is no dispatcher item. An item starts empty, you type into its panel,
+/// and that same item becomes the countdown — so x timers is always x items.
+/// `MenuBarExtra` is a static scene and cannot express that, which is why this
+/// drives `NSStatusItem` directly. It is the only AppKit surface in the app.
 @MainActor
 final class StatusItemController {
     private let store: TimerStore
-    private let home: NSStatusItem
     private var items: [UUID: NSStatusItem] = [:]
     /// Last string rendered per item, so an unchanged "1:23" never repaints.
     private var titles: [UUID: String] = [:]
+    /// Maps a clicked button back to the slot it belongs to.
+    private var slotsByButton: [ObjectIdentifier: UUID] = [:]
     private let popover = NSPopover()
-    private let ringCache = RingCache()
+    private var openSlot: UUID?
 
     init(store: TimerStore) {
         self.store = store
-        self.home = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-
-        home.button?.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Timers")
-        home.button?.imagePosition = .imageOnly
-        home.button?.target = self
-        home.button?.action = #selector(togglePopover)
-
         popover.behavior = .transient
         popover.contentSize = NSSize(width: Design.popoverWidth, height: 1)
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverView().environment(store)
-        )
 
         observe()
         sync()
@@ -44,7 +35,7 @@ final class StatusItemController {
     private func observe() {
         withObservationTracking {
             _ = store.tick
-            _ = store.timers
+            _ = store.slots
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.sync()
@@ -56,46 +47,65 @@ final class StatusItemController {
     // MARK: - Sync
 
     private func sync() {
-        let timers = store.sorted
-        let live = Set(timers.map(\.id))
+        let slots = store.slots
+        let live = Set(slots.map(\.id))
 
-        // Retire items for timers that are gone.
         for (id, item) in items where !live.contains(id) {
+            if let button = item.button { slotsByButton.removeValue(forKey: ObjectIdentifier(button)) }
             NSStatusBar.system.removeStatusItem(item)
             items.removeValue(forKey: id)
             titles.removeValue(forKey: id)
         }
 
-        for timer in timers { update(timer) }
+        for slot in slots { update(slot) }
     }
 
-    private func update(_ timer: TimerItem) {
-        let item = items[timer.id] ?? make(for: timer.id)
+    private func update(_ slot: Slot) {
+        let isNew = items[slot.id] == nil
+        let item = items[slot.id] ?? make(for: slot.id)
         guard let button = item.button else { return }
 
-        let remaining = timer.remaining(at: store.tick)
+        guard let timer = slot.timer else {
+            // Draft: a bare glyph, as narrow as the item can be. Menu bar width is
+            // the scarcest resource here — macOS hides items that do not fit.
+            if titles[slot.id] != nil || isNew {
+                titles[slot.id] = nil
+                button.attributedTitle = NSAttributedString(string: "")
+                button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "New timer")
+                button.imagePosition = .imageOnly
+            }
+            return
+        }
+
         let done = timer.hasFired(at: store.tick)
-        var title = Parser.clock(for: remaining)
-        if let tag = timer.tag { title = "#\(tag) " + title }
+        let title = Parser.clock(for: timer.remaining(at: store.tick))
 
         // Only touch the button when the rendered text actually changes.
-        if titles[timer.id] != title {
-            titles[timer.id] = title
+        if titles[slot.id] != title {
+            titles[slot.id] = title
             button.attributedTitle = NSAttributedString(string: title, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium),
+                .font: NSFont.monospacedDigitSystemFont(ofSize: Design.menuBarSize, weight: .medium),
                 .foregroundColor: color(done: done, paused: timer.isPaused),
             ])
         }
 
-        button.image = ringCache.image(progress: timer.progress(at: store.tick), paused: timer.isPaused)
-        button.imagePosition = .imageLeading
-        FileHandle.standardError.write("DBG title=\(button.attributedTitle.string) len=\(item.length) w=\(button.frame.width) img=\(button.image != nil)\n".data(using: .utf8)!)
-        item.menu = menu(for: timer, done: done)
+        // Text only. The ring costs ~18pt per item, and menu bar width is the
+        // scarcest resource in the app — macOS hides items that do not fit, so a
+        // decorated item is one you may never see. The ring lives in the panel.
+        if button.image != nil {
+            button.image = nil
+            button.imagePosition = .noImage
+        }
     }
 
     private func make(for id: UUID) -> NSStatusItem {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         items[id] = item
+        if let button = item.button {
+            slotsByButton[ObjectIdentifier(button)] = id
+            button.target = self
+            button.action = #selector(buttonClicked(_:))
+        }
         return item
     }
 
@@ -105,82 +115,39 @@ final class StatusItemController {
         return paused ? .secondaryLabelColor : .labelColor
     }
 
-    // MARK: - Per-timer menu
+    // MARK: - Panel
 
-    private func menu(for timer: TimerItem, done: Bool) -> NSMenu {
-        let menu = NSMenu()
+    @objc private func buttonClicked(_ sender: NSStatusBarButton) {
+        guard let id = slotsByButton[ObjectIdentifier(sender)] else { return }
 
-        if done {
-            menu.addItem(action("Restart", id: timer.id) { $0.restart($1) })
-        } else {
-            let label = timer.isPaused ? "Resume" : "Pause"
-            menu.addItem(action(label, id: timer.id) { $0.togglePause($1) })
-            menu.addItem(action("Restart", id: timer.id) { $0.restart($1) })
+        // Clicking the item whose panel is open closes it.
+        if popover.isShown, openSlot == id {
+            popover.performClose(nil)
+            openSlot = nil
+            return
         }
 
-        menu.addItem(.separator())
-        menu.addItem(action("Remove", id: timer.id) { $0.remove($1) })
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "New Timer…", action: #selector(showPopover), keyEquivalent: "n").target = self
-        return menu
+        show(id, from: sender)
     }
 
-    /// Wraps a store command as a menu item, so the selector plumbing lives once.
-    private func action(_ title: String, id: UUID, perform: @escaping (TimerStore, UUID) -> Void) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(runAction(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = Command(id: id, perform: perform)
-        return item
+    /// Opens a slot's panel without a click — used by the demo hook to make the
+    /// panel inspectable in a screenshot.
+    func openPanel(for id: UUID) {
+        guard let button = items[id]?.button else { return }
+        show(id, from: button)
     }
 
-    private final class Command {
-        let id: UUID
-        let perform: (TimerStore, UUID) -> Void
-        init(id: UUID, perform: @escaping (TimerStore, UUID) -> Void) {
-            self.id = id
-            self.perform = perform
-        }
-    }
+    private func show(_ id: UUID, from sender: NSStatusBarButton) {
 
-    @objc private func runAction(_ sender: NSMenuItem) {
-        guard let command = sender.representedObject as? Command else { return }
-        command.perform(store, command.id)
-        sync()
-    }
+        popover.performClose(nil)
+        popover.contentViewController = NSHostingController(
+            rootView: SlotView(slotID: id).environment(store)
+        )
+        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        openSlot = id
 
-    // MARK: - Popover
-
-    @objc private func togglePopover() {
-        popover.isShown ? popover.performClose(nil) : showPopover()
-    }
-
-    @objc private func showPopover() {
-        guard let button = home.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // Without this the text field never takes first responder and typing is lost.
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()
-    }
-}
-
-/// Renders the SwiftUI progress ring to an image, cached per visible step.
-/// A 1/60 quantisation means at most 120 renders for the ring's whole lifetime.
-@MainActor
-private final class RingCache {
-    private var cache: [Int: NSImage] = [:]
-
-    func image(progress: Double, paused: Bool) -> NSImage? {
-        let step = Int((progress * 60).rounded()) * (paused ? -1 : 1)
-        if let cached = cache[step] { return cached }
-
-        let renderer = ImageRenderer(content:
-            ProgressRing(progress: progress, paused: paused, size: 12).padding(1)
-        )
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
-        guard let cgImage = renderer.cgImage else { return nil }
-
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: 14, height: 14))
-        cache[step] = image
-        return image
     }
 }

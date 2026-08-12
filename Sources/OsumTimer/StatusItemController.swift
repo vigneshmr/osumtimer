@@ -137,15 +137,20 @@ final class StatusItemController {
         // Otherwise text only — menu bar width is the scarcest resource in the
         // app, and macOS hides items that do not fit.
         let label = Preferences.shared.showLabelsInMenuBar ? timer.tag : nil
-        if labels[slot.id] != label {
-            labels[slot.id] = label
-            if let label {
+        if let label {
+            if labels[slot.id] != label {
+                labels[slot.id] = label
                 button.image = labelCache.image(for: label)
                 button.imagePosition = .imageLeading
-            } else {
-                button.image = nil
-                button.imagePosition = .noImage
             }
+        } else if button.image != nil {
+            // Keyed off the button, not the label cache: an item that was a
+            // draft still carries the draft's timer glyph, and the cache agrees
+            // that "no label" has not changed — leaving the glyph sitting behind
+            // the digits.
+            labels[slot.id] = nil
+            button.image = nil
+            button.imagePosition = .noImage
         }
     }
 

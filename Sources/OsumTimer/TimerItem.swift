@@ -29,14 +29,29 @@ struct TimerItem: Identifiable, Codable, Equatable {
     var endsAt: Date?
     var pausedRemaining: TimeInterval?
     var createdAt: Date
+    /// Set when this timer was given a time of day rather than a length. Reset
+    /// resolves it again: "@5pm" means five o'clock every time, while the length
+    /// it worked out to when you set it goes stale the moment the clock moves.
+    var target: ClockTarget?
+    /// The words this timer was created from, kept so reset can hand them back
+    /// to the editor.
+    var input: String?
 
-    init(duration: TimeInterval, tag: String? = nil, now: Date = Date()) {
+    init(
+        duration: TimeInterval,
+        tag: String? = nil,
+        target: ClockTarget? = nil,
+        input: String? = nil,
+        now: Date = Date()
+    ) {
         self.id = UUID()
         self.tag = tag
         self.duration = duration
         self.endsAt = Self.onSecond(now.addingTimeInterval(duration))
         self.pausedRemaining = nil
         self.createdAt = now
+        self.target = target
+        self.input = input
     }
 
     /// End dates are snapped to a whole second so every timer's display rolls
@@ -87,7 +102,14 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     /// Back to the full duration and held there: reset puts the timer where it
     /// started, it does not start it. Pressing play is the separate decision.
-    mutating func restart() {
+    ///
+    /// A timer set to a time of day resets to that time as it stands now, not to
+    /// the length it once was — resetting a "@5pm" timer at 4:30 gives half an
+    /// hour, not the two hours it ran for when you set it at three.
+    mutating func restart(at now: Date = Date()) {
+        if let target, let interval = target.interval(from: now) {
+            duration = interval
+        }
         pausedRemaining = duration
         endsAt = nil
     }

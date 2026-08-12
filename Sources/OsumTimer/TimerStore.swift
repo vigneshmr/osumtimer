@@ -71,7 +71,9 @@ final class TimerStore {
     /// Turns a draft into a countdown — the same item, now ticking.
     func start(_ id: UUID, with parsed: ParsedTimer) {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
-        slots[index].timer = TimerItem(duration: parsed.duration, tag: parsed.tag)
+        slots[index].timer = TimerItem(
+            duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input
+        )
         // Advance the shared clock with it, or views compare a brand-new end date
         // against a tick up to a second old and round up to 25:01 for a 25:00 timer.
         tick = Date()

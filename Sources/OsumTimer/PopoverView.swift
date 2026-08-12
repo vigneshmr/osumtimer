@@ -325,18 +325,28 @@ private struct RunningPanel: View {
         typed = ""
     }
 
+    /// Rewind and stop — and for a timer written as a time of day, hand its own
+    /// words back to the editor. "@2pm" resets to two o'clock, whenever that now
+    /// is; the length it was set for went stale as soon as the clock moved.
+    private func reset() {
+        store.restart(slotID)
+        if timer.target != nil, let input = timer.input {
+            typed = input
+        }
+    }
+
     private var controls: some View {
         HStack(spacing: 7) {
                 if done {
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28, prominent: true) {
-                        store.restart(slotID)
+                        reset()
                     }
                 } else {
                     GlyphButton(symbol: timer.isPaused ? "play.fill" : "pause.fill",
                                 help: timer.isPaused ? "Resume" : "Pause", size: 28) {
                         store.togglePause(slotID)
                     }
-                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28) { store.restart(slotID) }
+                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28) { reset() }
                 }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.

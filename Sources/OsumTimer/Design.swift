@@ -15,7 +15,7 @@ enum Design {
     static let textSecondary = Color(light: .black.alpha(0.45), dark: .white.alpha(0.45))
     static let textFaint = Color(light: .black.alpha(0.28), dark: .white.alpha(0.28))
 
-    static let accent = Color(red: 0.063, green: 0.639, blue: 0.498)   // #10A37F
+    static let accent = Color(red: 0.094, green: 0.467, blue: 0.949)   // #1877F2
 
     // Geometry — a 4pt grid, two radii, and that is the entire system.
     static let radius: CGFloat = 10
@@ -71,11 +71,11 @@ struct ProgressRing: View {
                     style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                // Only while running, where it smooths one-second steps into a
-                // sweep. Pausing or resetting jumps the progress somewhere else
-                // entirely, and animating that sends the head hopping around the
-                // ring — so those land instantly.
-                .animation(paused ? nil : .linear(duration: 0.9), value: progress)
+                // Deliberately not animated. Interpolating between two progress
+                // values only looks right when they are one second apart; every
+                // other change — pause, reset, a new duration, a timer replaced
+                // in place — sends the head flying around the ring to catch up.
+                // A once-a-second step at this size reads as motion anyway.
         }
         .frame(width: size, height: size)
     }

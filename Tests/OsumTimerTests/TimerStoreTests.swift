@@ -107,6 +107,37 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertFalse(timer.isReady, "a running timer is never ready")
     }
 
+    /// "@5pm" means five o'clock whenever you reset it, not the gap it once was.
+    func testResetOnAnAbsoluteTargetResolvesTheTimeAgain() {
+        func at(_ hour: Int, _ minute: Int = 0) -> Date {
+            var components = DateComponents()
+            components.year = 2026; components.month = 8; components.day = 12
+            components.hour = hour; components.minute = minute
+            return Calendar.current.date(from: components)!
+        }
+
+        // Set at 3pm for 5pm: two hours.
+        let parsed = try! Parser.parse("@5pm", now: at(15)).get()
+        XCTAssertEqual(parsed.duration, 2 * 3600)
+        var timer = TimerItem(duration: parsed.duration, target: parsed.target, now: at(15))
+
+        // Reset at 4:30 means half an hour, not two.
+        timer.restart(at: at(16, 30))
+        XCTAssertEqual(timer.remaining(at: at(16, 30)), 1800, accuracy: 1)
+
+        // Past it, the next occurrence is tomorrow.
+        timer.restart(at: at(18))
+        XCTAssertEqual(timer.remaining(at: at(18)), 23 * 3600, accuracy: 1)
+    }
+
+    /// A plain duration is unaffected: it resets to the length it was given.
+    func testResetOnAPlainDurationKeepsItsLength() {
+        var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000))
+        timer.restart(at: Date(timeIntervalSinceReferenceDate: 9_999))
+
+        XCTAssertEqual(timer.remaining(at: Date(timeIntervalSinceReferenceDate: 9_999)), 600)
+    }
+
     func testResumeAfterResetSnapsToAWholeSecond() {
         var timer = TimerItem(duration: 600, now: Date(timeIntervalSinceReferenceDate: 1_000.3))
         timer.restart()

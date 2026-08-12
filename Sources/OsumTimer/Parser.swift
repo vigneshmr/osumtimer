@@ -6,6 +6,30 @@ struct ParsedTimer: Equatable {
     var tag: String?
     /// Human-readable echo of what we understood, shown live under the field.
     var echo: String
+    /// Set when the input named a time of day rather than a length ("@5pm").
+    /// Kept so the timer can be reset to that time, not to however long it
+    /// happened to be away when it was set.
+    var target: ClockTarget?
+    /// What was typed, as typed. Reset hands it back to the editor so a timer
+    /// can be reinstated from its own words rather than from a stale length.
+    var input: String = ""
+}
+
+/// A time of day, meaning its next occurrence — "@5pm" at 6pm means tomorrow.
+struct ClockTarget: Equatable, Codable {
+    var hour: Int
+    var minute: Int
+
+    /// How long from `now` until this clock time comes round again.
+    func interval(from now: Date, calendar: Calendar = .current) -> TimeInterval? {
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = hour
+        components.minute = minute
+        components.second = 0
+        guard var target = calendar.date(from: components) else { return nil }
+        if target <= now { target = target.addingTimeInterval(86_400) }
+        return target.timeIntervalSince(now)
+    }
 }
 
 enum ParseError: Error, Equatable {
@@ -30,8 +54,9 @@ enum Parser {
         text = text.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return .failure(.unrecognized) }
 
+        let target = absoluteTarget(text)
         let duration: TimeInterval? =
-            absoluteTarget(text, now: now, calendar: calendar)
+            target?.interval(from: now, calendar: calendar)
             ?? colonForm(text)
             ?? unitForm(text)
             ?? bareMinutes(text)
@@ -40,7 +65,13 @@ enum Parser {
         guard duration > 0 else { return .failure(.notPositive) }
         guard duration <= maxDuration else { return .failure(.tooLong) }
 
-        return .success(ParsedTimer(duration: duration, tag: tag, echo: echo(for: duration)))
+        return .success(ParsedTimer(
+            duration: duration,
+            tag: tag,
+            echo: echo(for: duration),
+            target: target,
+            input: raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
     }
 
     // MARK: - Rules
@@ -56,8 +87,9 @@ enum Parser {
         return tag.isEmpty ? nil : tag
     }
 
-    /// `@2pm`, `till 5pm`, `until 14:00`, `to 9:30am`
-    private static func absoluteTarget(_ text: String, now: Date, calendar: Calendar) -> TimeInterval? {
+    /// `@2pm`, `till 5pm`, `until 14:00`, `to 9:30am` — the clock time itself,
+    /// not the distance to it, so it can be resolved again later.
+    private static func absoluteTarget(_ text: String) -> ClockTarget? {
         let prefixes = ["@", "till ", "til ", "until ", "to "]
         guard let prefix = prefixes.first(where: { text.hasPrefix($0) }) else { return nil }
         var clock = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
@@ -78,14 +110,7 @@ enum Parser {
             if !isPM, hour == 12 { hour = 0 }
         }
 
-        var components = calendar.dateComponents([.year, .month, .day], from: now)
-        components.hour = hour
-        components.minute = minute
-        components.second = 0
-        guard var target = calendar.date(from: components) else { return nil }
-        // Always mean the *next* occurrence of that clock time.
-        if target <= now { target = target.addingTimeInterval(86_400) }
-        return target.timeIntervalSince(now)
+        return ClockTarget(hour: hour, minute: minute)
     }
 
     /// `1:30` (m:s) and `1:30:45` (h:m:s) — right-anchored, like a stopwatch reads.

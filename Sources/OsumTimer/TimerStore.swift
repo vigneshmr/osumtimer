@@ -191,7 +191,7 @@ final class TimerStore {
     private func fire(_ id: UUID) {
         guard let timer = slot(id)?.timer else { return }
         cancelFire(id)
-        notifier.fire(tag: timer.tag, duration: timer.duration)
+        notifier.fire(tag: timer.tag, duration: timer.duration, sound: Preferences.shared.alarmSound)
         // The item stays, reading 0:00, until you deal with it — an item that
         // clears itself leaves you unsure whether it ever ran.
         tick = Date()

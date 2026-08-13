@@ -155,7 +155,22 @@ final class StatusItemController {
     }
 
     private func make(for id: UUID) -> NSStatusItem {
+        // An item with no remembered position is placed left of everything already
+        // in the bar, and on a notched display that lands behind the notch: the
+        // item reports itself visible, has a real 32pt frame, and is simply never
+        // drawn. Seeding a spot in the right-hand cluster on first run avoids it.
+        // AppKit rewrites the same key when the item is Cmd-dragged, so this only
+        // ever decides where an item the user has never moved starts out.
+        let name = "slot-\(items.count)"
+        let key = "NSStatusItem Preferred Position \(name)"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            // Points from the right edge of the screen, stepped so several timers
+            // do not all ask for the same spot.
+            UserDefaults.standard.set(160 + 40 * items.count, forKey: key)
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = name
         items[id] = item
         if let button = item.button {
             slotsByButton[ObjectIdentifier(button)] = id

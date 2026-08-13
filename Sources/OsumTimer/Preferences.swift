@@ -39,6 +39,7 @@ final class Preferences {
     private enum Key {
         static let showLabels = "showLabelsInMenuBar"
         static let appearance = "appearance"
+        static let alarmSound = "alarmSound"
     }
 
     /// Draws a tagged timer's label beside its countdown, as `Therapy 2:12`.
@@ -53,6 +54,12 @@ final class Preferences {
         didSet { defaults.set(appearance.rawValue, forKey: Key.appearance) }
     }
 
+    /// Sound played when any timer fires — one setting for every timer, so a
+    /// sound you recognise means "a timer finished" whichever one it was.
+    var alarmSound: String {
+        didSet { defaults.set(alarmSound, forKey: Key.alarmSound) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -63,5 +70,10 @@ final class Preferences {
         // Unset, or set to something no longer recognised, means follow along.
         self.appearance = defaults.string(forKey: Key.appearance)
             .flatMap(AppearanceMode.init(rawValue:)) ?? .system
+        // A sound that has since been deleted would fail silently at the moment
+        // it mattered, so fall back to one that ships with the system.
+        let saved = defaults.string(forKey: Key.alarmSound)
+        self.alarmSound = saved.flatMap { NSSound(named: $0) != nil ? $0 : nil }
+            ?? SoundCatalog.fallback
     }
 }

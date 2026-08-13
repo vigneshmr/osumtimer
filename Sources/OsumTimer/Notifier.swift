@@ -7,7 +7,8 @@ import UserNotifications
 /// fatal for a timer. So the sound is played directly by the app, never attached to
 /// the notification, and the banner is best-effort on top.
 final class Notifier {
-    private let sound = NSSound(named: "Glass")
+    /// Held so a second alarm can cut the first one short rather than overlap it.
+    private var sound: NSSound?
 
     /// `UNUserNotificationCenter.current()` traps in a bundle-less process
     /// (`swift run`), so notifications are only wired up when we have a bundle id.
@@ -18,14 +19,21 @@ final class Notifier {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func fire(tag: String?, duration: TimeInterval) {
-        playSound()
+    /// `named` is the alarm tone; the caller reads it from preferences, keeping
+    /// this type unaware of settings.
+    func fire(tag: String?, duration: TimeInterval, sound named: String) {
+        playSound(named)
         postNotification(tag: tag, duration: duration)
     }
 
-    private func playSound() {
-        guard let sound else { return NSSound.beep() }
-        sound.stop()
+    private func playSound(_ named: String) {
+        // Resolved per alarm, not once at init: the preference can change, and a
+        // sound the user has since deleted must still leave us with a beep.
+        guard let sound = NSSound(named: named) ?? NSSound(named: SoundCatalog.fallback) else {
+            return NSSound.beep()
+        }
+        self.sound?.stop()
+        self.sound = sound
         sound.play()
     }
 

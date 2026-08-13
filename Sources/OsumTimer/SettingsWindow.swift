@@ -44,6 +44,10 @@ final class SettingsWindow {
 private struct SettingsView: View {
     @Bindable private var preferences = Preferences.shared
 
+    /// Read once: the sound folders do not change while the window is open, and
+    /// re-scanning the disk on every redraw would be wasteful.
+    @State private var sounds = SoundCatalog.names()
+
     /// Reads the bundle, so it can only disagree with the installer if the
     /// plist does. A bundle-less `swift run` has no version at all.
     private var version: String {
@@ -62,6 +66,24 @@ private struct SettingsView: View {
                     .font(Design.caption)
                     .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Picker("Alarm sound", selection: $preferences.alarmSound) {
+                    ForEach(sounds, id: \.self) { Text($0).tag($0) }
+                }
+                // Selecting plays it, so the choice is made by ear rather than by
+                // guessing what "Sosumi" sounds like.
+                .onChange(of: preferences.alarmSound) { _, name in SoundCatalog.preview(name) }
+
+                Button {
+                    SoundCatalog.preview(preferences.alarmSound)
+                } label: {
+                    Image(systemName: "play.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Play")
+                .accessibilityLabel("Play alarm sound")
             }
 
             Picker("Appearance", selection: $preferences.appearance) {

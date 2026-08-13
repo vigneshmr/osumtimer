@@ -25,7 +25,7 @@ build:
 test:
 	swift test
 
-# Build OsumTimer.app and an installer .pkg under build/.
+# Build OsumTimer.app and a drag-and-drop .dmg under build/.
 package:
 	@VERSION=$(VERSION) ./scripts/package.sh
 

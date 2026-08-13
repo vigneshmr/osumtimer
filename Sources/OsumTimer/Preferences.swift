@@ -26,6 +26,31 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// How long the alarm keeps sounding when a timer ends.
+///
+/// The system sounds are chimes — a second or two each — so anything longer than
+/// "once" is that sound on a loop, which is what makes it an alarm you can hear
+/// from another room rather than a notification you can sleep through.
+enum AlarmRing: Int, CaseIterable, Identifiable {
+    case once = 0
+    case tenSeconds = 10
+    case thirtySeconds = 30
+    case oneMinute = 60
+
+    var id: Int { rawValue }
+
+    var seconds: TimeInterval { TimeInterval(rawValue) }
+
+    var label: String {
+        switch self {
+        case .once: "Once"
+        case .tenSeconds: "10 sec"
+        case .thirtySeconds: "30 sec"
+        case .oneMinute: "1 min"
+        }
+    }
+}
+
 /// App-wide settings. One instance, because the settings window is one window
 /// however many timers open it.
 ///
@@ -40,6 +65,7 @@ final class Preferences {
         static let showLabels = "showLabelsInMenuBar"
         static let appearance = "appearance"
         static let alarmSound = "alarmSound"
+        static let alarmRing = "alarmRing"
     }
 
     /// Draws a tagged timer's label beside its countdown, as `Therapy 2:12`.
@@ -60,6 +86,12 @@ final class Preferences {
         didSet { defaults.set(alarmSound, forKey: Key.alarmSound) }
     }
 
+    /// How long that sound keeps going. Long enough to be missed-able is the
+    /// whole failure mode of a timer, so the default rings rather than chimes.
+    var alarmRing: AlarmRing {
+        didSet { defaults.set(alarmRing.rawValue, forKey: Key.alarmRing) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -75,5 +107,9 @@ final class Preferences {
         let saved = defaults.string(forKey: Key.alarmSound)
         self.alarmSound = saved.flatMap { NSSound(named: $0) != nil ? $0 : nil }
             ?? SoundCatalog.fallback
+        // `object(forKey:)` rather than `integer(forKey:)`: unset reads as 0,
+        // which is a real choice here ("Once") and not what a first run wants.
+        self.alarmRing = (defaults.object(forKey: Key.alarmRing) as? Int)
+            .flatMap(AlarmRing.init(rawValue:)) ?? .thirtySeconds
     }
 }

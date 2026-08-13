@@ -86,6 +86,19 @@ private struct SettingsView: View {
                 .accessibilityLabel("Play alarm sound")
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Ring for", selection: $preferences.alarmRing) {
+                    ForEach(AlarmRing.allCases) { ring in
+                        Text(ring.label).tag(ring)
+                    }
+                }
+
+                Text("Anything past “Once” loops the sound until the time is up, or until you touch the timer.")
+                    .font(Design.caption)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Picker("Appearance", selection: $preferences.appearance) {
                 ForEach(AppearanceMode.allCases) { mode in
                     Text(mode.label).tag(mode)

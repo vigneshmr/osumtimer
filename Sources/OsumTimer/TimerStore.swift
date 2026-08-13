@@ -19,6 +19,10 @@ final class TimerStore {
 
     private var displayTimer: Foundation.Timer?
     private var fireTimers: [UUID: DispatchSourceTimer] = [:]
+    /// Ends each slot's pulse. Timed here rather than read back from the
+    /// notifier: both are started from the same preference in the same breath,
+    /// so they run out together, and neither type has to know about the other.
+    private var ringWork: [UUID: DispatchWorkItem] = [:]
     private let notifier: Notifier
     private let store: Persistence
 
@@ -58,6 +62,24 @@ final class TimerStore {
 
     func slot(_ id: UUID) -> Slot? { slots.first { $0.id == id } }
 
+    /// Cuts a ringing alarm short. Anything that shows you have noticed the timer
+    /// counts — clicking its item, clearing it, starting another one.
+    func silenceAlarm() { hush() }
+
+    /// The slots whose alarm is sounding right now, so the menu bar can single
+    /// them out while it lasts — with several items reading 0:00, the one making
+    /// the noise is the one you are being asked about.
+    private(set) var ringing: Set<UUID> = []
+
+    /// Stops the sound and the pulse together: there is one alarm, so anything
+    /// that silences it silences all of it.
+    private func hush() {
+        notifier.silence()
+        for work in ringWork.values { work.cancel() }
+        ringWork.removeAll()
+        if !ringing.isEmpty { ringing = [] }
+    }
+
     // MARK: - Slot lifecycle
 
     /// The "+ Add timer" command: a new, empty menu bar item.
@@ -72,6 +94,7 @@ final class TimerStore {
     /// Turns a draft into a countdown — the same item, now ticking.
     func start(_ id: UUID, with parsed: ParsedTimer) {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
+        hush()
         slots[index].timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input
         )
@@ -91,6 +114,7 @@ final class TimerStore {
     /// Reusing the slot keeps the same item exactly where it was.
     func remove(_ id: UUID) {
         cancelFire(id)
+        hush()
         if slots.count == 1, slots[0].id == id {
             slots[0].timer = nil
             persist()
@@ -106,6 +130,7 @@ final class TimerStore {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
         cancelFire(id)
         slots[index].timer = nil
+        hush()
         persist()
     }
 
@@ -134,6 +159,7 @@ final class TimerStore {
     func restart(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         cancelFire(id)
+        hush()
 
         if timer.target != nil, let input = timer.input, !input.isEmpty {
             slots[index].timer = nil
@@ -191,10 +217,28 @@ final class TimerStore {
     private func fire(_ id: UUID) {
         guard let timer = slot(id)?.timer else { return }
         cancelFire(id)
-        notifier.fire(tag: timer.tag, duration: timer.duration, sound: Preferences.shared.alarmSound)
+        notifier.fire(
+            tag: timer.tag,
+            duration: timer.duration,
+            sound: Preferences.shared.alarmSound,
+            ringFor: Preferences.shared.alarmRing.seconds
+        )
+        startRinging(id, for: Preferences.shared.alarmRing.seconds)
         // The item stays, reading 0:00, until you deal with it — an item that
         // clears itself leaves you unsure whether it ever ran.
         tick = Date()
+    }
+
+    private func startRinging(_ id: UUID, for seconds: TimeInterval) {
+        guard seconds > 0 else { return }
+        ringing.insert(id)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.ringWork.removeValue(forKey: id)
+            self.ringing.remove(id)
+        }
+        ringWork[id] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
     private func rememberRecent(_ expression: String) {

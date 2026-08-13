@@ -21,6 +21,11 @@ final class StatusItemController {
     private var slotsByButton: [ObjectIdentifier: UUID] = [:]
     private let popover = NSPopover()
     private var openSlot: UUID?
+    /// Drives the flash of a ringing item; nil whenever nothing is ringing.
+    private var pulseTimer: Foundation.Timer?
+    private var pulseOn = false
+    /// Items currently flashing, so each can be put back exactly once.
+    private var pulsing: Set<UUID> = []
 
     init(store: TimerStore) {
         self.store = store
@@ -56,6 +61,7 @@ final class StatusItemController {
         withObservationTracking {
             _ = store.tick
             _ = store.slots
+            _ = store.ringing                           // starts and ends the pulse
             _ = Preferences.shared.showLabelsInMenuBar  // toggling it redraws the bar
             _ = Preferences.shared.appearance           // and so does restyling it
         } onChange: { [weak self] in
@@ -86,6 +92,49 @@ final class StatusItemController {
         }
 
         for slot in slots { update(slot) }
+        syncPulse()
+    }
+
+    // MARK: - Pulse
+
+    /// While a timer's alarm is sounding, its item flashes between normal and
+    /// highlighted — which is how the menu bar draws a clicked item, so AppKit
+    /// inverts the text with the background and it stays readable in either
+    /// appearance and against whatever is behind the bar.
+    private func syncPulse() {
+        let ringing = store.ringing
+
+        guard !ringing.isEmpty else {
+            pulseTimer?.invalidate()
+            pulseTimer = nil
+            for id in pulsing { items[id]?.button?.highlight(false) }
+            pulsing = []
+            pulseOn = false
+            return
+        }
+
+        // An item that stops ringing while another still is has to be let go of
+        // individually; the whole pulse is torn down above only once all are done.
+        for id in pulsing.subtracting(ringing) { items[id]?.button?.highlight(false) }
+        pulsing = ringing
+        apply(pulseOn)
+
+        guard pulseTimer == nil else { return }
+        let timer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.pulseOn.toggle()
+                self.apply(self.pulseOn)
+            }
+        }
+        // .common so the flash keeps going while a menu is tracking — the moment
+        // you are most likely to be looking at the menu bar.
+        RunLoop.main.add(timer, forMode: .common)
+        pulseTimer = timer
+    }
+
+    private func apply(_ on: Bool) {
+        for id in pulsing { items[id]?.button?.highlight(on) }
     }
 
     private func update(_ slot: Slot) {
@@ -183,18 +232,23 @@ final class StatusItemController {
     /// The colour a state needs, or nil to let the system tint it — which is the
     /// right answer whenever the text carries no state of its own.
     ///
-    /// Paused deliberately gets no colour. `secondaryLabelColor` resolves against
-    /// the app's appearance rather than the menu bar's, so on a dark bar it came
-    /// out near-black and the countdown all but disappeared. Pause is shown with
-    /// a template glyph instead, which AppKit tints the same way it tints its own.
+    /// Nothing takes a colour any more. Any fixed colour here is chosen against
+    /// the app's appearance rather than the menu bar's, and the bar is
+    /// translucent over whatever is behind it: paused in `secondaryLabelColor`
+    /// came out near-black on a dark bar, and the accent blue on `0:00` was just
+    /// as hard to read — for a state that `0:00` and the alarm already announce.
+    /// Both are shown by other means, and the digits stay system-tinted, which
+    /// also lets them invert when the item is clicked and drawn highlighted.
     private func tint(done: Bool, paused: Bool) -> NSColor? {
-        done ? NSColor(Design.accent) : nil
+        nil
     }
 
     // MARK: - Panel
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         guard let id = slotsByButton[ObjectIdentifier(sender)] else { return }
+        // Reaching for the menu bar at all means the alarm has done its job.
+        store.silenceAlarm()
 
         // Clicking the item whose panel is open closes it.
         if popover.isShown, openSlot == id {

@@ -6,10 +6,10 @@ import AppKit
 /// `NSSound(named:)` resolves a bare name across all of them — so nothing has to
 /// be bundled, and anything dropped into `~/Library/Sounds` shows up on its own.
 enum SoundCatalog {
-    /// Short, bright, and not a notification chime — what the app used before
-    /// the sound was selectable. Lives here rather than on `Preferences` so the
-    /// alarm path can reach it without hopping to the main actor.
-    static let fallback = "Glass"
+    /// Short, bright, and not a notification chime. Lives here rather than on
+    /// `Preferences` so the alarm path can reach it without hopping to the main
+    /// actor.
+    static let fallback = "Pop"
 
     private static let directories = [
         "\(NSHomeDirectory())/Library/Sounds",  // yours, and first in line

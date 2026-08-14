@@ -96,9 +96,10 @@ final class Preferences {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // Off by default: menu bar width is scarce, and macOS hides items that
-        // do not fit — a label is worth its width only if you ask for it.
-        self.showLabelsInMenuBar = defaults.bool(forKey: Key.showLabels)
+        // On by default: a tag you took the trouble to type is what tells two
+        // running timers apart at a glance.
+        self.showLabelsInMenuBar = defaults.object(forKey: Key.showLabels)
+            as? Bool ?? true
         // Unset, or set to something no longer recognised, means follow along.
         self.appearance = defaults.string(forKey: Key.appearance)
             .flatMap(AppearanceMode.init(rawValue:)) ?? .system
@@ -110,6 +111,6 @@ final class Preferences {
         // `object(forKey:)` rather than `integer(forKey:)`: unset reads as 0,
         // which is a real choice here ("Once") and not what a first run wants.
         self.alarmRing = (defaults.object(forKey: Key.alarmRing) as? Int)
-            .flatMap(AlarmRing.init(rawValue:)) ?? .thirtySeconds
+            .flatMap(AlarmRing.init(rawValue:)) ?? .tenSeconds
     }
 }

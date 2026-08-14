@@ -68,6 +68,13 @@ private struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            // Unavailable under `swift run`: no bundle, nothing to register.
+            Toggle("Open at login", isOn: $preferences.launchAtLogin)
+                .disabled(!LoginItem.isSupported)
+                .help(LoginItem.isSupported
+                    ? "Opens OsumTimer when you log in."
+                    : "Only available in the packaged app.")
+
             HStack(spacing: 8) {
                 Picker("Alarm sound", selection: $preferences.alarmSound) {
                     ForEach(sounds, id: \.self) { Text($0).tag($0) }

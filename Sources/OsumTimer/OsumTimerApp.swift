@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         if DebugRender.runIfRequested() { return }
         notifier.requestAuthorization()
+        // Reading it is what registers the login item on a first run; nothing
+        // else is guaranteed to touch preferences before you open Settings.
+        _ = Preferences.shared.launchAtLogin
 
         let store = TimerStore(notifier: notifier)
         self.store = store

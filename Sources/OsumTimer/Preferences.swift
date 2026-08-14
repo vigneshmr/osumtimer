@@ -66,6 +66,19 @@ final class Preferences {
         static let appearance = "appearance"
         static let alarmSound = "alarmSound"
         static let alarmRing = "alarmRing"
+        static let launchAtLogin = "launchAtLogin"
+    }
+
+    /// Opens the app when you log in. A menu bar timer you have to remember to
+    /// launch is a timer you will forget to set.
+    var launchAtLogin: Bool {
+        didSet {
+            // The system is the source of truth; if it refuses, show that rather
+            // than a toggle that lies.
+            let actual = LoginItem.set(launchAtLogin)
+            defaults.set(actual, forKey: Key.launchAtLogin)
+            if actual != launchAtLogin { launchAtLogin = actual }
+        }
     }
 
     /// Draws a tagged timer's label beside its countdown, as `Therapy 2:12`.
@@ -112,5 +125,11 @@ final class Preferences {
         // which is a real choice here ("Once") and not what a first run wants.
         self.alarmRing = (defaults.object(forKey: Key.alarmRing) as? Int)
             .flatMap(AlarmRing.init(rawValue:)) ?? .tenSeconds
+        // On by default, so the first launch is the only one you have to do by
+        // hand — but never re-registering behind the back of someone who turned
+        // it off, here or in System Settings.
+        let wanted = defaults.object(forKey: Key.launchAtLogin) as? Bool ?? true
+        self.launchAtLogin = wanted ? LoginItem.set(true) : LoginItem.isEnabled
+        defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
     }
 }

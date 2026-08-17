@@ -91,6 +91,9 @@ struct GlyphButton: View {
     var help: String
     var size: CGFloat = 20
     var prominent = false
+    /// The button Return presses. Ringed so the key's effect is visible before
+    /// it is pressed, the way a default button reads in a dialog.
+    var isDefault = false
     var action: () -> Void
 
     @State private var hovering = false
@@ -109,6 +112,10 @@ struct GlyphButton: View {
                 .background(
                     RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
                         .fill(hovering ? Design.hairline : Design.surfaceRaised)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
+                        .strokeBorder(Design.accent.opacity(isDefault ? 0.7 : 0), lineWidth: 1.5)
                 )
         }
         .buttonStyle(.plain)

@@ -334,10 +334,25 @@ private struct RunningPanel: View {
         }
     }
 
+    /// Return commits what is typed; with nothing typed it presses the control
+    /// this panel leads with — start a timer sitting at its full duration,
+    /// reset one that is running, paused partway, or ringing.
     private func submit() {
+        guard editing else { return defaultAction() }
         guard case .success(let value)? = parsed else { return }
         store.start(slotID, with: value)
         typed = ""
+    }
+
+    /// The control Return presses, and the one drawn as default.
+    private var startsOnReturn: Bool { !done && timer.isReady }
+
+    private func defaultAction() {
+        if startsOnReturn {
+            store.togglePause(slotID)
+        } else {
+            reset()
+        }
     }
 
     /// The store decides what reset means: a plain duration rewinds in place,
@@ -351,15 +366,18 @@ private struct RunningPanel: View {
     private var controls: some View {
         HStack(spacing: 7) {
                 if done {
-                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28, prominent: true) {
+                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
+                                prominent: true, isDefault: true) {
                         reset()
                     }
                 } else {
                     GlyphButton(symbol: timer.isPaused ? "play.fill" : "pause.fill",
-                                help: timer.isPaused ? "Resume" : "Pause", size: 28) {
+                                help: timer.isPaused ? "Resume" : "Pause", size: 28,
+                                isDefault: startsOnReturn) {
                         store.togglePause(slotID)
                     }
-                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28) { reset() }
+                    GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
+                                isDefault: !startsOnReturn) { reset() }
                 }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.

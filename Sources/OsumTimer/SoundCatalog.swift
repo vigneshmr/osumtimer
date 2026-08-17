@@ -2,9 +2,11 @@ import AppKit
 
 /// The sounds available as an alarm tone.
 ///
-/// macOS keeps these as loose files in three well-known directories, and
-/// `NSSound(named:)` resolves a bare name across all of them — so nothing has to
-/// be bundled, and anything dropped into `~/Library/Sounds` shows up on its own.
+/// macOS keeps these as loose files in two system-wide directories, and
+/// `NSSound(named:)` resolves a bare name across both of them — so nothing has
+/// to be bundled. `~/Library/Sounds` is deliberately not scanned: under the App
+/// Sandbox `NSHomeDirectory()` points into the app's container, so the lookup
+/// would find nothing anyway.
 enum SoundCatalog {
     /// Short, bright, and not a notification chime. Lives here rather than on
     /// `Preferences` so the alarm path can reach it without hopping to the main
@@ -12,9 +14,8 @@ enum SoundCatalog {
     static let fallback = "Pop"
 
     private static let directories = [
-        "\(NSHomeDirectory())/Library/Sounds",  // yours, and first in line
-        "/Library/Sounds",                      // installed for everyone
-        "/System/Library/Sounds",               // the fourteen that ship with macOS
+        "/Library/Sounds",         // installed for everyone
+        "/System/Library/Sounds",  // the fourteen that ship with macOS
     ]
 
     private static let playable: Set<String> = ["aiff", "aif", "wav", "m4a", "caf", "mp3"]

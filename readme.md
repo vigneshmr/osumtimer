@@ -38,7 +38,7 @@ A timer you sleep through is a timer that failed. So:
 - **It rings, it doesn't chime.** Pick how long: once, 10 seconds, 30 seconds, or a full minute. Anything past "once" loops until the time is up.
 - **It stops the moment you've noticed.** Clicking the item, clearing it, starting another timer — anything that shows you're aware silences it. It's there to reach you, not to outlast you.
 - **The ringing item is singled out** in the menu bar, so with several timers at `0:00`, the one making the noise is obviously the one asking for you.
-- Choose the tone from every sound on your Mac, including anything you've dropped in `~/Library/Sounds`. Previews play as you browse the list, so you pick by ear.
+- Choose the tone from every sound on your Mac. Previews play as you browse the list, so you pick by ear.
 
 Notifications are best-effort on top, marked time-sensitive so they survive most Focus setups.
 

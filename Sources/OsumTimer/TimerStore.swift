@@ -98,9 +98,7 @@ final class TimerStore {
         slots[index].timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input
         )
-        // Advance the shared clock with it, or views compare a brand-new end date
-        // against a tick up to a second old and round up to 25:01 for a 25:00 timer.
-        tick = Date()
+        catchUp()
         rememberRecent(parsed.expression)
         scheduleFire(slots[index])
         persist()
@@ -140,6 +138,7 @@ final class TimerStore {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
         if slots[index].timer!.isPaused {
             slots[index].timer!.resume()
+            catchUp()
             scheduleFire(slots[index])
         } else {
             slots[index].timer!.pause()
@@ -178,6 +177,15 @@ final class TimerStore {
     }
 
     // MARK: - Ticking
+
+    /// Pulls the shared clock up to now. Anything that hands a timer a fresh
+    /// `endsAt` has to call this: the labels read `endsAt - tick`, and a tick up
+    /// to a second old measured against a brand-new end date rounds up — a 20:00
+    /// timer shows "20:01" and counts *up* to 20:00 before it starts counting
+    /// down. Pausing needs no such thing; it stores an exact remainder.
+    private func catchUp() {
+        tick = Date()
+    }
 
     private func startDisplayTick() {
         // Fire just after each whole second, matching the boundary every timer's

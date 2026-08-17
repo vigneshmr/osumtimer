@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 
 /// The sounds available as an alarm tone.
 ///
@@ -42,16 +43,52 @@ enum SoundCatalog {
         return found.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
-    /// Plays a sound once, for previewing a choice. Stops whatever it was
-    /// playing first, so clicking down a list does not stack sounds on top of
-    /// each other.
-    @MainActor
-    static func preview(_ name: String) {
-        current?.stop()
-        let sound = NSSound(named: name)
-        current = sound
-        sound?.play()
+}
+
+/// The sound being auditioned in Settings, if any.
+///
+/// A preview is one sound at a time and always interruptible: whatever starts a
+/// new one stops the old one, and the window closing stops it outright — a sound
+/// you cannot see the source of is a sound you cannot turn off.
+@MainActor
+@Observable
+final class SoundPreview {
+    static let shared = SoundPreview()
+
+    /// The name currently sounding. Drives the button's play/stop face, so it is
+    /// cleared when the sound ends on its own as well as when it is stopped.
+    private(set) var playing: String?
+
+    private var sound: NSSound?
+    private var end: DispatchWorkItem?
+
+    private init() {}
+
+    /// What the button does: press it while a sound is playing and it stops.
+    func toggle(_ name: String) {
+        if playing == name { stop() } else { play(name) }
     }
 
-    @MainActor private static var current: NSSound?
+    func play(_ name: String) {
+        stop()
+        guard let sound = NSSound(named: name) else { return }
+        self.sound = sound
+        playing = name
+        sound.play()
+
+        // NSSound reports when it finishes only through a delegate, which means
+        // an NSObject; its own duration says the same thing without one. Being a
+        // frame out only means the button's face changes a frame late.
+        let work = DispatchWorkItem { [weak self] in self?.stop() }
+        end = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.1, sound.duration), execute: work)
+    }
+
+    func stop() {
+        end?.cancel()
+        end = nil
+        sound?.stop()
+        sound = nil
+        playing = nil
+    }
 }

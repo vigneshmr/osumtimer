@@ -37,6 +37,14 @@ final class SettingsWindow {
         window.title = "Settings"
         window.contentViewController = NSHostingController(rootView: SettingsView())
         window.isReleasedWhenClosed = false  // reopened later, not rebuilt
+
+        // A preview outliving the window would be a sound with nothing on screen
+        // to stop it — the app has no other visible surface to turn it off from.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { SoundPreview.shared.stop() }
+        }
         return window
     }
 }
@@ -47,6 +55,9 @@ private struct SettingsView: View {
     /// Read once: the sound folders do not change while the window is open, and
     /// re-scanning the disk on every redraw would be wasteful.
     @State private var sounds = SoundCatalog.names()
+
+    private var preview = SoundPreview.shared
+    private var sounding: Bool { preview.playing == preferences.alarmSound }
 
     /// Reads the bundle, so it can only disagree with the installer if the
     /// plist does. A bundle-less `swift run` has no version at all.
@@ -81,16 +92,18 @@ private struct SettingsView: View {
                 }
                 // Selecting plays it, so the choice is made by ear rather than by
                 // guessing what "Sosumi" sounds like.
-                .onChange(of: preferences.alarmSound) { _, name in SoundCatalog.preview(name) }
+                .onChange(of: preferences.alarmSound) { _, name in preview.play(name) }
 
+                // Stops as readily as it starts: the same button, showing what
+                // pressing it now would do.
                 Button {
-                    SoundCatalog.preview(preferences.alarmSound)
+                    preview.toggle(preferences.alarmSound)
                 } label: {
-                    Image(systemName: "play.circle")
+                    Image(systemName: sounding ? "stop.circle" : "play.circle")
                 }
                 .buttonStyle(.borderless)
-                .help("Play")
-                .accessibilityLabel("Play alarm sound")
+                .help(sounding ? "Stop" : "Play")
+                .accessibilityLabel(sounding ? "Stop alarm sound" : "Play alarm sound")
             }
 
             VStack(alignment: .leading, spacing: 6) {

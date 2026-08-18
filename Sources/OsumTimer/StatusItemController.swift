@@ -21,6 +21,14 @@ final class StatusItemController {
     private var slotsByButton: [ObjectIdentifier: UUID] = [:]
     private let popover = NSPopover()
     private var openSlot: UUID?
+    /// The item geometry the open panel has been re-aimed against, and how many
+    /// times — an item the panel cannot centre on is left alone after a few
+    /// tries rather than re-aimed every second.
+    private var anchoredItem: NSRect = .zero
+    private var attempts = 0
+    /// Whether a follow-up re-aim is already queued. A drag moves the item
+    /// continuously, and one queued check settles it as well as sixty do.
+    private var recheckQueued = false
     /// Drives the flash of a ringing item; nil whenever nothing is ringing.
     private var pulseTimer: Foundation.Timer?
     private var pulseOn = false
@@ -41,6 +49,25 @@ final class StatusItemController {
             forName: .osumClosePanel, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePanel() }
+        }
+
+        // The bar rearranges itself for reasons no timer knows about — a
+        // neighbouring item resizing, another app adding one, a Cmd-drag. Waiting
+        // for the next tick to notice leaves the arrow beside its item for up to a
+        // second; the item's own window says so the moment it happens.
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let moved = note.object as? NSWindow,
+                          // Only the item's window: the panel moves too, and
+                          // re-aiming off its own movement would chase itself.
+                          let id = self.openSlot, self.items[id]?.button?.window === moved
+                    else { return }
+                    self.reanchor()
+                }
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -93,6 +120,56 @@ final class StatusItemController {
 
         for slot in slots { update(slot) }
         syncPulse()
+        reanchor()
+    }
+
+    /// Keeps the open panel pointing at the middle of its item.
+    ///
+    /// A popover follows its item along the bar when a neighbour resizes, but it
+    /// holds the rect it was given at the moment it opened. So an item that
+    /// changes width under its own panel — clearing a countdown for the glyph,
+    /// or starting one over the glyph — leaves the arrow aimed where the item
+    /// used to be, off to one side of where it now is. Handing back the current
+    /// bounds re-aims it.
+    ///
+    /// Checked against the result rather than predicted: the item's button, its
+    /// window and the panel each settle a beat apart, so a rect handed over the
+    /// moment the title changed is measured against a position that has not
+    /// finished moving. Comparing the two centres after the fact catches that,
+    /// whichever of them was late.
+    private func reanchor() {
+        guard popover.isShown, let id = openSlot, let button = items[id]?.button,
+              let itemWindow = button.window,
+              let panel = popover.contentViewController?.view.window else { return }
+
+        // An item near the edge of the screen holds a panel that cannot centre on
+        // it — the panel would run off the display, so the arrow slides along it
+        // instead and the centres legitimately differ. Re-aiming is capped so
+        // that case settles instead of trying again every second.
+        if itemWindow.frame != anchoredItem {
+            anchoredItem = itemWindow.frame
+            attempts = 0
+        }
+        guard abs(panel.frame.midX - itemWindow.frame.midX) > 1, attempts < 8 else { return }
+        attempts += 1
+        // The item's window, its button and the panel settle a beat apart, so an
+        // early re-aim can land against a position that is still moving. Checked
+        // again shortly after rather than at the next tick, which would leave the
+        // arrow visibly beside its item for a second.
+        if !recheckQueued {
+            recheckQueued = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.recheckQueued = false
+                    self?.reanchor()
+                }
+            }
+        }
+        // Toggled between the two ways of naming the same rect — an explicit one
+        // and `.zero`, which means "the view's bounds". Assigning the value it
+        // already holds changes nothing and so re-aims nothing; this always
+        // reads as a change.
+        popover.positioningRect = popover.positioningRect == .zero ? button.bounds : .zero
     }
 
     // MARK: - Pulse
@@ -157,7 +234,10 @@ final class StatusItemController {
         }
 
         let done = timer.hasFired(at: store.tick)
-        let title = Parser.clock(for: timer.remaining(at: store.tick))
+        let title = Self.padded(
+            Parser.clock(for: timer.remaining(at: store.tick)),
+            to: Parser.clock(for: timer.duration)
+        )
 
         // Only touch the button when what it renders actually changes; the state
         // is part of that, since it decides how the title is coloured.
@@ -201,6 +281,35 @@ final class StatusItemController {
             button.image = nil
             button.imagePosition = .noImage
         }
+    }
+
+    /// Pads a countdown out to the width of the longest string this timer will
+    /// ever show, so the item never changes width as the digits fall away.
+    ///
+    /// The item sizes itself to its title, so "1:00:00" → "59:59" and again
+    /// "10:00" → "9:59" shrink it, sliding it and everything left of it along
+    /// the bar — and dragging an open panel with it, since the panel is anchored
+    /// to the item. Monospaced digits do not cover it: the character count is
+    /// what changes.
+    ///
+    /// Padding the string rather than fixing `item.length`: an explicit length
+    /// is laid out with 16pt of dead space added beside the button, so the
+    /// digits sit off-centre in the item and the panel's arrow no longer lines
+    /// up with them.
+    ///
+    /// The two spaces are exact stand-ins in a monospaced-digit font — FIGURE
+    /// SPACE carries a digit's advance, PUNCTUATION SPACE a colon's — so a
+    /// padded string measures identically to the one it is matched against.
+    /// Split across both ends to keep the digits centred.
+    static func padded(_ title: String, to widest: String) -> String {
+        let digits = widest.filter(\.isNumber).count - title.filter(\.isNumber).count
+        let colons = widest.filter { $0 == ":" }.count - title.filter { $0 == ":" }.count
+        guard digits > 0 || colons > 0 else { return title }
+
+        let pad = Array(String(repeating: "\u{2007}", count: max(0, digits))
+            + String(repeating: "\u{2008}", count: max(0, colons)))
+        let split = pad.count / 2
+        return String(pad[..<split]) + title + String(pad[split...])
     }
 
     private func make(for id: UUID) -> NSStatusItem {
@@ -280,6 +389,8 @@ final class StatusItemController {
         )
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         openSlot = id
+        anchoredItem = sender.window?.frame ?? .zero
+        attempts = 0
 
         // Without this the text field never takes first responder and typing is lost.
         NSApp.activate(ignoringOtherApps: true)

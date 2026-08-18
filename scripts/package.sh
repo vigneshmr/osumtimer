@@ -7,6 +7,9 @@
 set -euo pipefail
 
 VERSION="${VERSION:-1.0.0}"
+# DMG=0 stops after the .app — what `make reinstall` wants, since it copies the
+# bundle straight into /Applications and never opens a disk image.
+DMG_WANTED="${DMG:-1}"
 BUNDLE_ID="${BUNDLE_ID:-com.osumtimer.OsumTimer}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,6 +60,13 @@ echo "==> Signing (ad-hoc)"
 # Ad-hoc: enough for the bundle to launch locally and to have a stable identity
 # for notification permissions. Distribution would need a Developer ID here.
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1
+
+if [ "$DMG_WANTED" = "0" ]; then
+	rm -rf "$STAGE"
+	echo
+	echo "App:  $APP"
+	exit 0
+fi
 
 echo "==> Building disk image"
 # The staged folder is what the mounted volume shows: the app, and a symlink to

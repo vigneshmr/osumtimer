@@ -34,6 +34,22 @@ struct ClockTarget: Equatable, Codable {
         if target <= now { target = target.addingTimeInterval(86_400) }
         return target.timeIntervalSince(now)
     }
+
+    /// "4:00 PM" — how the user's locale writes this time of day. Shown wherever
+    /// a timer would otherwise report the length it happened to work out to.
+    func label(calendar: Calendar = .current, now: Date = Date()) -> String {
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = hour
+        components.minute = minute
+        guard let date = calendar.date(from: components) else {
+            return String(format: "%d:%02d", hour, minute)
+        }
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("jm")
+        return formatter.string(from: date)
+    }
 }
 
 enum ParseError: Error, Equatable {

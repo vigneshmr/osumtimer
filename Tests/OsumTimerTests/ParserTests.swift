@@ -112,4 +112,19 @@ final class TimerItemTests: XCTestCase {
         XCTAssertEqual(timer.progress(at: now.addingTimeInterval(75)), 0.75, accuracy: 0.01)
         XCTAssertEqual(timer.progress(at: now.addingTimeInterval(200)), 1, accuracy: 0.01)
     }
+
+    /// "@4pm" should describe itself as four o'clock, in whatever way the
+    /// locale writes that, rather than as the length it resolved to.
+    func testClockTargetLabelsItselfAsATimeOfDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+
+        let label = ClockTarget(hour: 16, minute: 0).label(calendar: calendar, now: now)
+        XCTAssertFalse(label.contains("min"))
+        if Locale.current.identifier.hasPrefix("en_US") {
+            XCTAssertTrue(label.hasPrefix("4:00"), label)
+            XCTAssertTrue(label.hasSuffix("PM"), label)
+        }
+    }
+
 }

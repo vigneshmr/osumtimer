@@ -413,11 +413,15 @@ private struct RunningPanel: View {
         return ceil(widest.size(withAttributes: [.font: font]).width)
     }
 
+    /// What the timer is, under its countdown. A timer set to a time of day says
+    /// that time — the length it worked out to when it was set means nothing an
+    /// hour later, while "until 4:00 PM" is what was actually asked for.
     private var word: String {
         if done { return "done" }
-        if timer.isReady { return "ready · \(Parser.echo(for: timer.duration))" }
-        if timer.isPaused { return "paused · \(Parser.echo(for: timer.duration))" }
-        return Parser.echo(for: timer.duration)
+        let what = timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
+        if timer.isReady { return "ready · \(what)" }
+        if timer.isPaused { return "paused · \(what)" }
+        return what
     }
 
 }

@@ -36,10 +36,11 @@ struct SlotView: View {
     private var footer: some View {
         HStack(spacing: 0) {
             Button {
-                store.addSlot()
-                // The new item appears in the menu bar, which is where you have
-                // to go next anyway — leaving this panel open just covers it.
-                NotificationCenter.default.post(name: .osumClosePanel, object: nil)
+                let id = store.addSlot()
+                // Adding a timer is asking to set one: the new item's panel opens
+                // on its own duration field, so you type instead of hunting for it
+                // in the bar.
+                NotificationCenter.default.post(name: .osumOpenPanel, object: id)
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
@@ -335,8 +336,8 @@ private struct RunningPanel: View {
     }
 
     /// Return commits what is typed; with nothing typed it presses the control
-    /// this panel leads with — start a timer sitting at its full duration,
-    /// reset one that is running, paused partway, or ringing.
+    /// this panel leads with — pause or resume a timer still counting, reset one
+    /// that has rung.
     private func submit() {
         guard editing else { return defaultAction() }
         guard case .success(let value)? = parsed else { return }
@@ -344,11 +345,13 @@ private struct RunningPanel: View {
         typed = ""
     }
 
-    /// The control Return presses, and the one drawn as default.
-    private var startsOnReturn: Bool { !done && timer.isReady }
+    /// The control Return presses, and the one drawn as default. While the
+    /// timer still has time on it the useful move is to stop or restart the
+    /// count; once it has rung, the only thing left to do is reset it.
+    private var pausesOnReturn: Bool { !done }
 
     private func defaultAction() {
-        if startsOnReturn {
+        if pausesOnReturn {
             store.togglePause(slotID)
         } else {
             reset()
@@ -373,11 +376,11 @@ private struct RunningPanel: View {
                 } else {
                     GlyphButton(symbol: timer.isPaused ? "play.fill" : "pause.fill",
                                 help: timer.isPaused ? "Resume" : "Pause", size: 28,
-                                isDefault: startsOnReturn) {
+                                isDefault: pausesOnReturn) {
                         store.togglePause(slotID)
                     }
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
-                                isDefault: !startsOnReturn) { reset() }
+                                isDefault: !pausesOnReturn) { reset() }
                 }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.

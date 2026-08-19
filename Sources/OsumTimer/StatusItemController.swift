@@ -70,6 +70,19 @@ final class StatusItemController {
             }
         }
 
+        // The item for a brand new slot is created by the observer that watches
+        // the store, which runs a beat later — sync first so there is something
+        // to hang the panel off.
+        NotificationCenter.default.addObserver(
+            forName: .osumOpenPanel, object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, let id = note.object as? UUID else { return }
+                self.sync()
+                self.openPanel(for: id)
+            }
+        }
+
         NotificationCenter.default.addObserver(
             forName: .osumOpenSettings, object: nil, queue: .main
         ) { [weak self] _ in
@@ -444,6 +457,9 @@ private struct LabelChip: View {
 extension Notification.Name {
     /// Posted by the panel when it wants the popover dismissed.
     static let osumClosePanel = Notification.Name("OsumTimer.closePanel")
+    /// Posted with a slot's `UUID` when that slot's panel should be shown —
+    /// "Add timer" hands the new item straight back as an open duration field.
+    static let osumOpenPanel = Notification.Name("OsumTimer.openPanel")
     /// Posted by a panel's gear; any of them opens the one settings window.
     static let osumOpenSettings = Notification.Name("OsumTimer.openSettings")
 }

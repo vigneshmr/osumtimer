@@ -19,16 +19,8 @@ final class StatusItemController {
     private let labelCache = LabelCache()
     /// Maps a clicked button back to the slot it belongs to.
     private var slotsByButton: [ObjectIdentifier: UUID] = [:]
-    private let popover = NSPopover()
+    private let panel = PanelWindow()
     private var openSlot: UUID?
-    /// The item geometry the open panel has been re-aimed against, and how many
-    /// times — an item the panel cannot centre on is left alone after a few
-    /// tries rather than re-aimed every second.
-    private var anchoredItem: NSRect = .zero
-    private var attempts = 0
-    /// Whether a follow-up re-aim is already queued. A drag moves the item
-    /// continuously, and one queued check settles it as well as sixty do.
-    private var recheckQueued = false
     /// Drives the flash of a ringing item; nil whenever nothing is ringing.
     private var pulseTimer: Foundation.Timer?
     private var pulseOn = false
@@ -37,8 +29,6 @@ final class StatusItemController {
 
     init(store: TimerStore) {
         self.store = store
-        popover.behavior = .transient
-        popover.contentSize = NSSize(width: Design.popoverWidth, height: 1)
 
         observe()
         sync()
@@ -49,25 +39,6 @@ final class StatusItemController {
             forName: .osumClosePanel, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePanel() }
-        }
-
-        // The bar rearranges itself for reasons no timer knows about — a
-        // neighbouring item resizing, another app adding one, a Cmd-drag. Waiting
-        // for the next tick to notice leaves the arrow beside its item for up to a
-        // second; the item's own window says so the moment it happens.
-        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
-            NotificationCenter.default.addObserver(
-                forName: name, object: nil, queue: .main
-            ) { [weak self] note in
-                MainActor.assumeIsolated {
-                    guard let self, let moved = note.object as? NSWindow,
-                          // Only the item's window: the panel moves too, and
-                          // re-aiming off its own movement would chase itself.
-                          let id = self.openSlot, self.items[id]?.button?.window === moved
-                    else { return }
-                    self.reanchor()
-                }
-            }
         }
 
         // The item for a brand new slot is created by the observer that watches
@@ -115,11 +86,11 @@ final class StatusItemController {
     // MARK: - Sync
 
     private func sync() {
-        // Set on the popover rather than on NSApp: forcing the whole app into an
+        // Set on the panel rather than on NSApp: forcing the whole app into an
         // appearance would drag the status items with it, and those have to keep
         // following the menu bar or their text stops matching everything beside it.
         let appearance = Preferences.shared.appearance.appearance
-        if popover.appearance != appearance { popover.appearance = appearance }
+        if panel.appearance != appearance { panel.appearance = appearance }
 
         let slots = store.slots
         let live = Set(slots.map(\.id))
@@ -133,56 +104,9 @@ final class StatusItemController {
 
         for slot in slots { update(slot) }
         syncPulse()
-        reanchor()
-    }
-
-    /// Keeps the open panel pointing at the middle of its item.
-    ///
-    /// A popover follows its item along the bar when a neighbour resizes, but it
-    /// holds the rect it was given at the moment it opened. So an item that
-    /// changes width under its own panel — clearing a countdown for the glyph,
-    /// or starting one over the glyph — leaves the arrow aimed where the item
-    /// used to be, off to one side of where it now is. Handing back the current
-    /// bounds re-aims it.
-    ///
-    /// Checked against the result rather than predicted: the item's button, its
-    /// window and the panel each settle a beat apart, so a rect handed over the
-    /// moment the title changed is measured against a position that has not
-    /// finished moving. Comparing the two centres after the fact catches that,
-    /// whichever of them was late.
-    private func reanchor() {
-        guard popover.isShown, let id = openSlot, let button = items[id]?.button,
-              let itemWindow = button.window,
-              let panel = popover.contentViewController?.view.window else { return }
-
-        // An item near the edge of the screen holds a panel that cannot centre on
-        // it — the panel would run off the display, so the arrow slides along it
-        // instead and the centres legitimately differ. Re-aiming is capped so
-        // that case settles instead of trying again every second.
-        if itemWindow.frame != anchoredItem {
-            anchoredItem = itemWindow.frame
-            attempts = 0
-        }
-        guard abs(panel.frame.midX - itemWindow.frame.midX) > 1, attempts < 8 else { return }
-        attempts += 1
-        // The item's window, its button and the panel settle a beat apart, so an
-        // early re-aim can land against a position that is still moving. Checked
-        // again shortly after rather than at the next tick, which would leave the
-        // arrow visibly beside its item for a second.
-        if !recheckQueued {
-            recheckQueued = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.recheckQueued = false
-                    self?.reanchor()
-                }
-            }
-        }
-        // Toggled between the two ways of naming the same rect — an explicit one
-        // and `.zero`, which means "the view's bounds". Assigning the value it
-        // already holds changes nothing and so re-aims nothing; this always
-        // reads as a change.
-        popover.positioningRect = popover.positioningRect == .zero ? button.bounds : .zero
+        // Only the height ever changes, and only when the slot changes state;
+        // where the panel sits was decided when it opened and is left alone.
+        panel.fit()
     }
 
     // MARK: - Pulse
@@ -373,9 +297,8 @@ final class StatusItemController {
         store.silenceAlarm()
 
         // Clicking the item whose panel is open closes it.
-        if popover.isShown, openSlot == id {
-            popover.performClose(nil)
-            openSlot = nil
+        if panel.isShown, openSlot == id {
+            closePanel()
             return
         }
 
@@ -383,7 +306,7 @@ final class StatusItemController {
     }
 
     func closePanel() {
-        popover.performClose(nil)
+        panel.close(notify: false)
         openSlot = nil
     }
 
@@ -395,19 +318,14 @@ final class StatusItemController {
     }
 
     private func show(_ id: UUID, from sender: NSStatusBarButton) {
-
-        popover.performClose(nil)
-        popover.contentViewController = NSHostingController(
-            rootView: SlotView(slotID: id).environment(store)
-        )
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         openSlot = id
-        anchoredItem = sender.window?.frame ?? .zero
-        attempts = 0
-
-        // Without this the text field never takes first responder and typing is lost.
-        NSApp.activate(ignoringOtherApps: true)
-        popover.contentViewController?.view.window?.makeKey()
+        panel.show(
+            under: sender,
+            appearance: Preferences.shared.appearance.appearance,
+            content: SlotView(slotID: id).environment(store)
+        ) { [weak self] in
+            self?.openSlot = nil
+        }
     }
 }
 

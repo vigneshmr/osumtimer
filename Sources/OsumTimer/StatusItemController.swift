@@ -312,8 +312,19 @@ final class StatusItemController {
 
     /// Opens a slot's panel without a click — used by the demo hook to make the
     /// panel inspectable in a screenshot.
-    func openPanel(for id: UUID) {
+    func openPanel(for id: UUID, retries: Int = 6) {
         guard let button = items[id]?.button else { return }
+        // A status item created a moment ago has not been placed in the bar yet,
+        // and a panel anchored to that lands in the bottom-left corner. Give the
+        // bar a few moments, then show regardless: an item the menu bar has
+        // hidden — a full bar collapses the ones that do not fit — never gets a
+        // frame at all, and the panel still has to appear.
+        if (button.window?.frame.height ?? 0) == 0, retries > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.openPanel(for: id, retries: retries - 1)
+            }
+            return
+        }
         show(id, from: button)
     }
 

@@ -41,6 +41,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.statusItems?.openPanel(for: first)
             }
+            return
         }
+
+        installReopenHandler()
+        presentDraftPanel()
+    }
+
+    /// Opening the app while it is already running arrives as a reopen Apple
+    /// event. Taken straight off the event manager rather than through
+    /// `applicationShouldHandleReopen`, which SwiftUI's scene machinery swallows
+    /// for an app whose only scene is `Settings`.
+    private func installReopenHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleReopen(_:with:)),
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEReopenApplication)
+        )
+    }
+
+    @objc private func handleReopen(_ event: NSAppleEventDescriptor, with reply: NSAppleEventDescriptor) {
+        presentDraftPanel()
+    }
+
+    private func presentDraftPanel() {
+        guard let store else { return }
+        let id = store.slots.first(where: \.isDraft)?.id ?? store.addSlot()
+        // The status item for a new slot is created by the observer that watches
+        // the store; the notification syncs the bar first, so there is something
+        // to hang the panel off either way.
+        NotificationCenter.default.post(name: .osumOpenPanel, object: id)
     }
 }

@@ -116,9 +116,16 @@ final class PanelWindow {
 
     /// The point on the underside of the menu bar the pointer aims at.
     private func anchorPoint(for button: NSStatusBarButton) -> CGPoint {
-        guard let itemWindow = button.window else { return .zero }
-        let rect = itemWindow.frame
-        return CGPoint(x: rect.midX, y: rect.minY)
+        if let rect = button.window?.frame, rect.width > 0, rect.height > 0,
+           let screen = NSScreen.screens.first(where: { $0.frame.intersects(rect) }),
+           rect.maxY >= screen.frame.maxY - 1 {
+            return CGPoint(x: rect.midX, y: rect.minY)
+        }
+        // The item is hidden — a crowded menu bar collapses the ones that do not
+        // fit, and its window is then off screen. The panel still has to appear,
+        // so it hangs from under the right end of the bar instead.
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        return CGPoint(x: screen.frame.maxX - 40, y: screen.visibleFrame.maxY)
     }
 
     /// Hangs the bubble from `anchor` with the pointer near its trailing corner,

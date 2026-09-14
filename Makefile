@@ -38,6 +38,9 @@ app:
 # bundle cleanly, and the new one has to be the copy that gets relaunched.
 reinstall: app
 	@osascript -e 'quit app "OsumTimer"' >/dev/null 2>&1 || true
+	@# `quit` returns before the process is gone; launching over a still-exiting
+	@# copy fails with LaunchServices -600.
+	@for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq OsumTimer || break; sleep 0.2; done
 	@rm -rf /Applications/OsumTimer.app
 	@cp -R build/OsumTimer.app /Applications/OsumTimer.app
 	@echo "installed: /Applications/OsumTimer.app"

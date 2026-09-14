@@ -30,6 +30,10 @@ final class PanelWindow {
     /// long as the bubble is open.
     private var pointerX: CGFloat = 0
     private var onClose: (() -> Void)?
+    /// Clicks anywhere else — another app, the desktop, a menu bar extra like
+    /// the clock — close the panel. Losing key status alone does not catch the
+    /// menu bar cases: those never take key from a non-activating panel.
+    private var clickMonitors: [Any] = []
 
     var isShown: Bool { window?.isVisible ?? false }
     var appearance: NSAppearance? {
@@ -84,6 +88,24 @@ final class PanelWindow {
         panel.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKey()
+        watchForClicksOutside(panel, ignoring: button.window)
+    }
+
+    /// A click on the item the panel hangs from is left to the item: it toggles
+    /// the panel itself, and closing here first would make it reopen instead.
+    private func watchForClicksOutside(_ panel: NSPanel, ignoring itemWindow: NSWindow?) {
+        let buttons: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: buttons, handler: { [weak self] _ in
+            self?.close(notify: true)
+        }) {
+            clickMonitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: buttons, handler: { [weak self, weak panel, weak itemWindow] event in
+            if let panel, event.window !== panel, event.window !== itemWindow { self?.close(notify: true) }
+            return event
+        }) {
+            clickMonitors.append(local)
+        }
     }
 
     /// The panel grows and shrinks as its slot changes state. Only its height
@@ -96,6 +118,8 @@ final class PanelWindow {
     }
 
     func close(notify: Bool = true) {
+        clickMonitors.forEach { NSEvent.removeMonitor($0) }
+        clickMonitors.removeAll()
         window?.onResignKey = nil
         window?.orderOut(nil)
         window = nil

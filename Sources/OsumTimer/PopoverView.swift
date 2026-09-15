@@ -439,7 +439,7 @@ private struct RunningPanel: View {
         // A percentage on its own does not say how long that is; the clock
         // moves down here so it is still one glance away.
         let what = percent
-            ? "\(Parser.clock(for: timer.remaining(at: now))) left"
+            ? Parser.clock(for: timer.remaining(at: now))
             : timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
         if timer.isReady { return "ready · \(what)" }
         if timer.isPaused { return "paused · \(what)" }

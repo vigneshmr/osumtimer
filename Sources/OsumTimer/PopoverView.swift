@@ -249,6 +249,7 @@ private struct RunningPanel: View {
     @FocusState private var capturing: Bool
 
     private var done: Bool { timer.hasFired(at: now) }
+    private var percent: Bool { timer.display == .percent }
     private var editing: Bool { !typed.isEmpty }
 
     private var parsed: Result<ParsedTimer, ParseError>? {
@@ -297,10 +298,19 @@ private struct RunningPanel: View {
                 // will ever show — so nothing shifts when 10:00 becomes 9:59.
                 // Monospaced digits alone do not cover it: the character
                 // count changes too.
-                Text(Parser.clock(for: timer.remaining(at: now)))
+                Text(percent ? "\(timer.percentRemaining(at: now))%" : Parser.clock(for: timer.remaining(at: now)))
                     .font(.system(size: 25, weight: .light).monospacedDigit())
                     .foregroundStyle(done ? Design.accent : Design.textPrimary)
                     .frame(minWidth: clockWidth, alignment: .leading)
+
+                // The bar answers the question the percentage asks — how much
+                // is left — the ring is too small to show a difference of a
+                // few points.
+                if percent {
+                    ProgressBar(remaining: 1 - timer.progress(at: now), paused: timer.isPaused)
+                        .frame(width: clockWidth, height: 4)
+                        .padding(.vertical, 2)
+                }
 
                 // Duration, state and tag share one line. Given a tag its own
                 // column, the panel has to be wide enough for a tag that is
@@ -382,6 +392,13 @@ private struct RunningPanel: View {
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
                                 isDefault: !pausesOnReturn) { reset() }
                 }
+                // Clock or percent: how this one timer reads, in the bar and
+                // here. Offered in every state, since a finished timer still
+                // shows a number.
+                GlyphButton(symbol: percent ? "clock" : "percent",
+                            help: percent ? "Show as time" : "Show as percent", size: 28) {
+                    store.toggleDisplay(slotID)
+                }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.
                 GlyphButton(symbol: "xmark", help: "Clear — keeps this menu bar item", size: 28) {
@@ -406,10 +423,11 @@ private struct RunningPanel: View {
         .font(Design.caption)
     }
 
-    /// Width of the full-duration clock string, measured in the same font.
+    /// Width of the full-duration clock string — or "100%" — measured in the
+    /// same font.
     private var clockWidth: CGFloat {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 25, weight: .light)
-        let widest = Parser.clock(for: timer.duration) as NSString
+        let widest = (percent ? "100%" : Parser.clock(for: timer.duration)) as NSString
         return ceil(widest.size(withAttributes: [.font: font]).width)
     }
 
@@ -418,7 +436,11 @@ private struct RunningPanel: View {
     /// hour later, while "until 4:00 PM" is what was actually asked for.
     private var word: String {
         if done { return "done" }
-        let what = timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
+        // A percentage on its own does not say how long that is; the clock
+        // moves down here so it is still one glance away.
+        let what = percent
+            ? "\(Parser.clock(for: timer.remaining(at: now))) left"
+            : timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
         if timer.isReady { return "ready · \(what)" }
         if timer.isPaused { return "paused · \(what)" }
         return what

@@ -171,10 +171,15 @@ final class StatusItemController {
         }
 
         let done = timer.hasFired(at: store.tick)
-        let title = Self.padded(
-            Parser.clock(for: timer.remaining(at: store.tick)),
-            to: Parser.clock(for: timer.duration)
-        )
+        let percent = timer.display == .percent ? timer.percentRemaining(at: store.tick) : nil
+        let title = if let percent {
+            Self.padded("\(percent)%", to: "100%")
+        } else {
+            Self.padded(
+                Parser.clock(for: timer.remaining(at: store.tick)),
+                to: Parser.clock(for: timer.duration)
+            )
+        }
 
         // Only touch the button when what it renders actually changes; the state
         // is part of that, since it decides how the title is coloured.
@@ -202,11 +207,16 @@ final class StatusItemController {
         // countdown's colour too, which is what made paused timers unreadable.
         // Otherwise text only — menu bar width is the scarcest resource in the
         // app, and macOS hides items that do not fit.
+        //
+        // In percent mode the bar rides the same way, next to the digits: "73%"
+        // says how much is left, the bar shows it, and together they are still
+        // narrower than "1:00:00" was.
         let label = Preferences.shared.showLabelsInMenuBar ? timer.tag : nil
-        if let label {
-            if labels[slot.id] != label {
-                labels[slot.id] = label
-                button.image = labelCache.image(for: label)
+        if label != nil || percent != nil {
+            let key = "\(label ?? "")|\(percent.map(String.init) ?? "")"
+            if labels[slot.id] != key {
+                labels[slot.id] = key
+                button.image = labelCache.image(label: label, percent: percent, paused: timer.isPaused)
                 button.imagePosition = .imageLeading
             }
         } else if button.image != nil {
@@ -340,7 +350,8 @@ final class StatusItemController {
     }
 }
 
-/// Draws a tag as a light-on-dark chip, cached per tag.
+/// Draws what sits beside the digits — a tag chip, a percent bar, or both —
+/// cached per rendering.
 ///
 /// An image, not styled text: the chip's colours are fixed by design, and an
 /// attributed title would take the countdown's colour out of the system's hands
@@ -349,7 +360,66 @@ final class StatusItemController {
 private final class LabelCache {
     private var cache: [String: NSImage] = [:]
 
-    func image(for tag: String) -> NSImage? {
+    /// The bar's footprint, sized to sit on the text's baseline like a glyph.
+    private static let barSize = NSSize(width: 22, height: 5)
+
+    func image(label: String?, percent: Int?, paused: Bool) -> NSImage? {
+        // A bare bar is a template: AppKit tints it like the digits and inverts
+        // it with them when the item is highlighted. A chip fixes its own
+        // colours, so beside one the bar takes a fixed colour too.
+        guard let label else {
+            return percent.map { bar(remaining: $0, paused: paused) }
+        }
+        guard let percent else { return chip(for: label) }
+
+        let key = "\(label)|\(percent)|\(paused)"
+        if let cached = cache[key] { return cached }
+        guard let chip = chip(for: label) else { return nil }
+        let gap: CGFloat = 4
+        let barSize = Self.barSize
+        let size = NSSize(width: chip.size.width + gap + barSize.width, height: max(chip.size.height, barSize.height))
+        let image = NSImage(size: size, flipped: false) { rect in
+            chip.draw(in: NSRect(origin: .zero, size: chip.size))
+            let frame = NSRect(x: chip.size.width + gap, y: (rect.height - barSize.height) / 2,
+                               width: barSize.width, height: barSize.height)
+            Self.drawBar(in: frame, remaining: percent, paused: paused, color: .labelColor)
+            return true
+        }
+        cache[key] = image
+        return image
+    }
+
+    /// The bar on its own, drawn in black and marked as a template so the menu
+    /// bar picks the actual colour.
+    private func bar(remaining percent: Int, paused: Bool) -> NSImage {
+        let key = "bar|\(percent)|\(paused)"
+        if let cached = cache[key] { return cached }
+
+        let image = NSImage(size: Self.barSize, flipped: false) { rect in
+            Self.drawBar(in: rect, remaining: percent, paused: paused, color: .black)
+            return true
+        }
+        image.isTemplate = true
+        cache[key] = image
+        return image
+    }
+
+    /// A track with the remaining fraction filled, left-anchored so it drains
+    /// toward the digits. Two alphas of one colour: the track is faint, the
+    /// fill solid — or dimmed, when the timer is paused.
+    private static func drawBar(in rect: NSRect, remaining percent: Int, paused: Bool, color: NSColor) {
+        let radius = rect.height / 2
+        color.withAlphaComponent(0.22).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+
+        let width = rect.width * CGFloat(max(0, min(100, percent))) / 100
+        guard width > 0 else { return }
+        let filled = NSRect(x: rect.minX, y: rect.minY, width: max(rect.height, width), height: rect.height)
+        color.withAlphaComponent(paused ? 0.45 : 1).setFill()
+        NSBezierPath(roundedRect: filled, xRadius: radius, yRadius: radius).fill()
+    }
+
+    private func chip(for tag: String) -> NSImage? {
         if let cached = cache[tag] { return cached }
 
         let renderer = ImageRenderer(content: LabelChip(tag: tag))

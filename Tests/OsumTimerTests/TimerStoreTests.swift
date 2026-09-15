@@ -234,4 +234,46 @@ final class TimerStoreTests: XCTestCase {
     func testEmptySnapshotStillYieldsOneSlot() {
         XCTAssertEqual(store(Snapshot()).slots.count, 1)
     }
+
+    // MARK: - Percent mode
+
+    /// 100% at the start, 0% only when done, and never 0% while any time is left.
+    func testPercentCountsDownFrom100AndRoundsUp() {
+        // On a whole second: end dates are snapped down to one.
+        let start = Date(timeIntervalSinceReferenceDate: Date().timeIntervalSinceReferenceDate.rounded(.down))
+        let timer = TimerItem(duration: 200, now: start)
+
+        XCTAssertEqual(timer.percentRemaining(at: start), 100)
+        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(100)), 50)
+        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(199.5)), 1)
+        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(200)), 0)
+        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(500)), 0)
+    }
+
+    func testDisplayModeTogglesAndSurvivesARelaunch() {
+        let slot = Slot(timer: TimerItem(duration: 600))
+        let filename = "test-\(UUID().uuidString).json"
+        scratchFiles.append(filename)
+        let persistence = Persistence(filename: filename)
+        persistence.save(Snapshot(slots: [slot]))
+
+        let first = TimerStore(store: persistence)
+        XCTAssertEqual(first.slots[0].timer?.display, .clock)
+        first.toggleDisplay(slot.id)
+        XCTAssertEqual(first.slots[0].timer?.display, .percent)
+
+        let second = TimerStore(store: persistence)
+        XCTAssertEqual(second.slots[0].timer?.display, .percent)
+        second.toggleDisplay(slot.id)
+        XCTAssertEqual(second.slots[0].timer?.display, .clock)
+    }
+
+    /// Timers saved before the mode existed decode as clock timers.
+    func testTimerWithoutDisplayKeyDecodesAsClock() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","duration":60,"createdAt":0,"pausedRemaining":60}
+        """
+        let timer = try JSONDecoder().decode(TimerItem.self, from: Data(json.utf8))
+        XCTAssertEqual(timer.display, .clock)
+    }
 }

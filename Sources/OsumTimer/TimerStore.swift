@@ -169,6 +169,14 @@ final class TimerStore {
         persist()
     }
 
+    /// Flips a timer between reading as a clock and as a percentage. Display
+    /// only — the countdown itself is untouched.
+    func toggleDisplay(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
+        slots[index].timer!.display = timer.display == .clock ? .percent : .clock
+        persist()
+    }
+
     /// Keeps what is being typed with the slot, so it survives the panel closing.
     func setDraft(_ id: UUID, _ text: String) {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].draft != text else { return }

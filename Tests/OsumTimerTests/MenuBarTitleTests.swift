@@ -36,6 +36,13 @@ final class MenuBarTitleTests: XCTestCase {
         }
     }
 
+    /// In percent mode the widest string is "100%"; every step down keeps it.
+    func testEveryPercentIsOneWidth() {
+        for percent in 0...100 {
+            assertSameWidth("\(percent)%", "100%")
+        }
+    }
+
     func testFullWidthTitleIsLeftAlone() {
         XCTAssertEqual(StatusItemController.padded("10:00", to: "10:00"), "10:00")
     }

@@ -17,6 +17,10 @@ enum DebugRender {
         let input = ProcessInfo.processInfo.environment["OSUMTIMER_RENDER_INPUT"] ?? "25m #deepwork"
         let parsed = (try? Parser.parse(input).get()) ?? .init(duration: 1500, tag: nil, echo: "25 min")
         store.start(running, with: parsed)
+        // `OSUMTIMER_RENDER_PERCENT=1` renders the timer reading as a percentage.
+        if ProcessInfo.processInfo.environment["OSUMTIMER_RENDER_PERCENT"] != nil {
+            store.toggleDisplay(running)
+        }
         let draft = store.addSlot()
 
         render(SlotView(slotID: running).environment(store), to: path)

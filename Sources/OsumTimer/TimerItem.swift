@@ -41,6 +41,33 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// The words this timer was created from, kept so reset can hand them back
     /// to the editor.
     var input: String?
+    /// How the countdown reads, in the bar and in the panel. Per timer, not an
+    /// app setting: a 2h block wants "34%" — how much is left, at a glance —
+    /// while a 3 minute egg wants the seconds.
+    var display: DisplayMode = .clock
+
+    enum DisplayMode: String, Codable {
+        case clock, percent
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display
+    }
+
+    /// `display` arrived after timers were already on disk; a file without it
+    /// is a clock timer, not an unreadable one.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        tag = try c.decodeIfPresent(String.self, forKey: .tag)
+        duration = try c.decode(TimeInterval.self, forKey: .duration)
+        endsAt = try c.decodeIfPresent(Date.self, forKey: .endsAt)
+        pausedRemaining = try c.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        target = try c.decodeIfPresent(ClockTarget.self, forKey: .target)
+        input = try c.decodeIfPresent(String.self, forKey: .input)
+        display = try c.decodeIfPresent(DisplayMode.self, forKey: .display) ?? .clock
+    }
 
     init(
         duration: TimeInterval,
@@ -85,6 +112,14 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     func hasFired(at now: Date = Date()) -> Bool {
         !isPaused && remaining(at: now) <= 0
+    }
+
+    /// What is left, as a whole percentage counting down from 100. Rounded up
+    /// like the clock is: a timer with any time on it never reads 0%, and one
+    /// just started reads 100%, not 99%.
+    func percentRemaining(at now: Date = Date()) -> Int {
+        guard duration > 0 else { return 0 }
+        return Int((remaining(at: now) / duration * 100).rounded(.up))
     }
 
     /// 0 at the start, 1 at the buzzer. Drives the ring.

@@ -81,6 +81,24 @@ struct ProgressRing: View {
     }
 }
 
+/// The percent-mode bar. Drains from the right as time runs out, so the filled
+/// part is what is left — the same thing the number beside it says.
+struct ProgressBar: View {
+    var remaining: Double
+    var paused: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Design.hairline)
+                Capsule()
+                    .fill(paused ? Design.textFaint : Design.accent)
+                    .frame(width: max(0, min(1, remaining)) * geo.size.width)
+            }
+        }
+    }
+}
+
 /// A borderless glyph button — the only button style in the app.
 ///
 /// Icon-only: labels do not fit four abreast at the panel's width, and a clipped

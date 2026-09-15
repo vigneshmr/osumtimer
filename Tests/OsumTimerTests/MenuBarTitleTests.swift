@@ -36,10 +36,13 @@ final class MenuBarTitleTests: XCTestCase {
         }
     }
 
-    /// In percent mode the widest string is "100%"; every step down keeps it.
+    /// In percent mode both numbers move: "0% (25:00 left)" through
+    /// "100% (0:00 left)" all measure the same.
     func testEveryPercentIsOneWidth() {
-        for percent in 0...100 {
-            assertSameWidth("\(percent)%", "100%")
+        let widest = "100% (\(Parser.clock(for: 1500)) left)"
+        for remaining in stride(from: 1500.0, through: 0, by: -15) {
+            let percent = Int((1 - remaining / 1500) * 100)
+            assertSameWidth("\(percent)% (\(Parser.clock(for: remaining)) left)", widest)
         }
     }
 

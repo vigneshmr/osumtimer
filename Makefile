@@ -41,6 +41,12 @@ reinstall: app
 	@# `quit` returns before the process is gone; launching over a still-exiting
 	@# copy fails with LaunchServices -600.
 	@for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq OsumTimer || break; sleep 0.2; done
+	@# A menu-bar-only app can ignore the Apple event entirely (no automation
+	@# consent, no windows to close), and `open -a` would then just raise the
+	@# old process. Whatever is still alive gets a signal instead.
+	@if pgrep -xq OsumTimer; then pkill -x OsumTimer; \
+	  for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq OsumTimer || break; sleep 0.2; done; fi
+	@pgrep -xq OsumTimer && pkill -9 -x OsumTimer; true
 	@rm -rf /Applications/OsumTimer.app
 	@cp -R build/OsumTimer.app /Applications/OsumTimer.app
 	@echo "installed: /Applications/OsumTimer.app"

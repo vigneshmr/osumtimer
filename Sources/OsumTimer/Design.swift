@@ -81,10 +81,10 @@ struct ProgressRing: View {
     }
 }
 
-/// The percent-mode bar. Drains from the right as time runs out, so the filled
-/// part is what is left — the same thing the number beside it says.
+/// The percent-mode bar. Fills from the left as time goes by, so the filled
+/// part is how far along the timer is — the same thing the number says.
 struct ProgressBar: View {
-    var remaining: Double
+    var progress: Double
     var paused: Bool
 
     var body: some View {
@@ -93,7 +93,7 @@ struct ProgressBar: View {
                 Capsule().fill(Design.hairline)
                 Capsule()
                     .fill(paused ? Design.textFaint : Design.accent)
-                    .frame(width: max(0, min(1, remaining)) * geo.size.width)
+                    .frame(width: max(0, min(1, progress)) * geo.size.width)
             }
         }
     }

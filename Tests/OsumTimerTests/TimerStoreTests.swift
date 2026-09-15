@@ -237,17 +237,18 @@ final class TimerStoreTests: XCTestCase {
 
     // MARK: - Percent mode
 
-    /// 100% at the start, 0% only when done, and never 0% while any time is left.
-    func testPercentCountsDownFrom100AndRoundsUp() {
+    /// 0% at the start, 100% only when done, and never 100% while time is left.
+    func testPercentClimbsFrom0AndRoundsDown() {
         // On a whole second: end dates are snapped down to one.
         let start = Date(timeIntervalSinceReferenceDate: Date().timeIntervalSinceReferenceDate.rounded(.down))
         let timer = TimerItem(duration: 200, now: start)
 
-        XCTAssertEqual(timer.percentRemaining(at: start), 100)
-        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(100)), 50)
-        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(199.5)), 1)
-        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(200)), 0)
-        XCTAssertEqual(timer.percentRemaining(at: start.addingTimeInterval(500)), 0)
+        XCTAssertEqual(timer.percentElapsed(at: start), 0)
+        XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(1)), 0)
+        XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(100)), 50)
+        XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(199.5)), 99)
+        XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(200)), 100)
+        XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(500)), 100)
     }
 
     func testDisplayModeTogglesAndSurvivesARelaunch() {

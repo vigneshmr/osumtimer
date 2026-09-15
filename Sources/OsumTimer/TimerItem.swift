@@ -114,12 +114,11 @@ struct TimerItem: Identifiable, Codable, Equatable {
         !isPaused && remaining(at: now) <= 0
     }
 
-    /// What is left, as a whole percentage counting down from 100. Rounded up
-    /// like the clock is: a timer with any time on it never reads 0%, and one
-    /// just started reads 100%, not 99%.
-    func percentRemaining(at now: Date = Date()) -> Int {
-        guard duration > 0 else { return 0 }
-        return Int((remaining(at: now) / duration * 100).rounded(.up))
+    /// How far along, as a whole percentage climbing from 0 to 100. Rounded
+    /// down: a timer with any time on it never reads 100%, and one just started
+    /// reads 0%, not 1%.
+    func percentElapsed(at now: Date = Date()) -> Int {
+        Int((progress(at: now) * 100).rounded(.down))
     }
 
     /// 0 at the start, 1 at the buzzer. Drives the ring.

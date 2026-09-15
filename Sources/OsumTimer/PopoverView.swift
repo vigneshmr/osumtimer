@@ -298,16 +298,16 @@ private struct RunningPanel: View {
                 // will ever show — so nothing shifts when 10:00 becomes 9:59.
                 // Monospaced digits alone do not cover it: the character
                 // count changes too.
-                Text(percent ? "\(timer.percentRemaining(at: now))%" : Parser.clock(for: timer.remaining(at: now)))
+                Text(percent ? "\(timer.percentElapsed(at: now))%" : Parser.clock(for: timer.remaining(at: now)))
                     .font(.system(size: 25, weight: .light).monospacedDigit())
                     .foregroundStyle(done ? Design.accent : Design.textPrimary)
                     .frame(minWidth: clockWidth, alignment: .leading)
 
-                // The bar answers the question the percentage asks — how much
-                // is left — the ring is too small to show a difference of a
-                // few points.
+                // The bar answers the question the percentage asks — how far
+                // along — the ring is too small to show a difference of a few
+                // points.
                 if percent {
-                    ProgressBar(remaining: 1 - timer.progress(at: now), paused: timer.isPaused)
+                    ProgressBar(progress: timer.progress(at: now), paused: timer.isPaused)
                         .frame(width: clockWidth, height: 4)
                         .padding(.vertical, 2)
                 }

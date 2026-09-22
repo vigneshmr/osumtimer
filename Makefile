@@ -3,7 +3,7 @@ SHELL := /bin/bash
 # Bumped by hand; `make package VERSION=1.1.0` overrides it for a one-off.
 VERSION := 1.0.0
 
-.PHONY: run debug setup build test clean package app reinstall icon
+.PHONY: run debug setup build test clean package app reinstall icon release brew-install
 
 # Launch the menu bar app in the foreground; Ctrl-C to stop.
 run:
@@ -51,6 +51,17 @@ reinstall: app
 	@cp -R build/OsumTimer.app /Applications/OsumTimer.app
 	@echo "installed: /Applications/OsumTimer.app"
 	@open -a /Applications/OsumTimer.app
+
+# Cut a release: tag, GitHub release with the .dmg, and a cask update in the
+# Homebrew tap so `brew upgrade` delivers it. Bump VERSION above first.
+release:
+	@VERSION=$(VERSION) ./scripts/release.sh
+
+# Install (or upgrade to) the published version through Homebrew, the way a
+# user would. Taps first, so a plain `brew install osumtimer` resolves.
+brew-install:
+	@brew tap vigneshmr/osumtimer
+	@brew install osumtimer || brew upgrade osumtimer
 
 # Just the icon, for looking at it without a full build.
 icon:

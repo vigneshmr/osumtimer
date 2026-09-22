@@ -64,9 +64,14 @@ A finished timer sits at `0:00` and waits for you rather than quietly vanishing 
 
 ## Install
 
-Grab the `.dmg` from [Releases](../../releases) and drag OsumTimer to your Applications folder.
+```sh
+brew tap vigneshmr/osumtimer
+brew install osumtimer
+```
 
-The build is ad-hoc signed rather than notarized, so the first launch needs a right-click → **Open** (or System Settings → Privacy & Security → *Open Anyway*). After that it opens normally.
+`brew upgrade` picks up new releases from then on. The cask clears the quarantine flag on install, so it launches without the Gatekeeper dance below.
+
+Or grab the `.dmg` from [Releases](../../releases) and drag OsumTimer to your Applications folder. The build is ad-hoc signed rather than notarized, so the first launch needs a right-click → **Open** (or System Settings → Privacy & Security → *Open Anyway*). After that it opens normally.
 
 > Launch it from `/Applications`. The login item registers whatever path the app is at when it first runs, so opening it once from `~/Downloads` and moving it later leaves a registration pointing at nothing.
 
@@ -79,6 +84,7 @@ make package   # builds build/OsumTimer.app and a drag-and-drop .dmg
 make run       # run it straight from source
 make debug     # same, but restarts on every file change (needs fswatch)
 make test      # unit tests
+make release   # tag, publish the .dmg to GitHub Releases, update the Homebrew tap
 ```
 
 `make run` produces a bare executable rather than an `.app` bundle, so "Open at login" is greyed out there — it needs a real bundle for macOS to register. Everything else behaves identically.

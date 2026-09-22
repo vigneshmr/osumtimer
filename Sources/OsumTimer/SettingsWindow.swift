@@ -1,55 +1,21 @@
 import AppKit
 import SwiftUI
 
-/// The one settings window, opened from any timer's gear.
+/// Opens the settings window declared as the app's `Settings` scene.
 ///
-/// A menu bar only app has no Window menu to reopen a closed window from, so the
-/// window is rebuilt on demand and simply raised if it is already up.
+/// The scene is what answers ⌘, — so the gear goes through the same door rather
+/// than owning a second window that could sit beside the first.
 @MainActor
-final class SettingsWindow {
-    static let shared = SettingsWindow()
-
-    private var window: NSWindow?
-
-    func show() {
-        if window == nil { window = make() }
-        applyAppearance()
+enum SettingsWindow {
+    static func show() {
         // Accessory apps are not frontmost by default; without this the window
         // appears behind whatever you were using.
         NSApp.activate(ignoringOtherApps: true)
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
-    }
-
-    /// Called again whenever the preference changes, so the window restyles
-    /// while you are looking at it rather than on next open.
-    func applyAppearance() {
-        window?.appearance = Preferences.shared.appearance.appearance
-    }
-
-    private func make() -> NSWindow {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 120),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Settings"
-        window.contentViewController = NSHostingController(rootView: SettingsView())
-        window.isReleasedWhenClosed = false  // reopened later, not rebuilt
-
-        // A preview outliving the window would be a sound with nothing on screen
-        // to stop it — the app has no other visible surface to turn it off from.
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: window, queue: .main
-        ) { _ in
-            MainActor.assumeIsolated { SoundPreview.shared.stop() }
-        }
-        return window
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 
-private struct SettingsView: View {
+struct SettingsView: View {
     @Bindable private var preferences = Preferences.shared
 
     /// Read once: the sound folders do not change while the window is open, and
@@ -125,7 +91,6 @@ private struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .onChange(of: preferences.appearance) { SettingsWindow.shared.applyAppearance() }
 
             Text(version)
                 .font(Design.caption)
@@ -133,5 +98,10 @@ private struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 360, alignment: .leading)
+        // The window restyles while you are looking at it, not on next open.
+        .preferredColorScheme(preferences.appearance.colorScheme)
+        // A preview outliving the window would be a sound with nothing on screen
+        // to stop it — the app has no other visible surface to turn it off from.
+        .onDisappear { preview.stop() }
     }
 }

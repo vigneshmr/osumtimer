@@ -59,7 +59,7 @@ final class StatusItemController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.closePanel()  // the popover is transient; it would close anyway
-                SettingsWindow.shared.show()
+                SettingsWindow.show()
             }
         }
     }

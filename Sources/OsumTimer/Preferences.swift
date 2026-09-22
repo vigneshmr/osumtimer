@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import SwiftUI
 
 /// Which appearance the app's own surfaces use, independent of the system.
 enum AppearanceMode: String, CaseIterable, Identifiable {
@@ -13,6 +14,15 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
+        }
+    }
+
+    /// The same choice for SwiftUI-owned windows.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 

@@ -5,9 +5,9 @@ struct OsumTimerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        // The menu bar is driven by StatusItemController, not by a scene — the
-        // app needs one declared scene regardless, and Settings is the inert choice.
-        Settings { EmptyView() }
+        // The menu bar is driven by StatusItemController, not by a scene. This
+        // is the app's only one; it also answers ⌘,.
+        Settings { SettingsView() }
     }
 }
 

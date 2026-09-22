@@ -69,17 +69,15 @@ cask "osumtimer" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "OsumTimer.app"
 
   # The bundle is ad-hoc signed, not notarized, so Gatekeeper would refuse a
   # quarantined copy outright. Stripping the flag is what the user would do by
   # hand anyway.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/OsumTimer.app"],
-                   sudo: false
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/OsumTimer.app"]
   end
 
   uninstall quit: "com.osumtimer.OsumTimer"
@@ -98,6 +96,7 @@ Homebrew tap for [OsumTimer](https://github.com/$APP_REPO), a menu bar timer for
 
 \`\`\`sh
 brew tap ${TAP_REPO%/homebrew-*}/${TAP_REPO#*/homebrew-}
+brew trust ${TAP_REPO%/homebrew-*}/${TAP_REPO#*/homebrew-}
 brew install osumtimer
 \`\`\`
 

@@ -66,6 +66,7 @@ A finished timer sits at `0:00` and waits for you rather than quietly vanishing 
 
 ```sh
 brew tap vigneshmr/osumtimer
+brew trust vigneshmr/osumtimer   # newer Homebrew asks before loading third-party taps
 brew install osumtimer
 ```
 

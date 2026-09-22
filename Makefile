@@ -61,6 +61,8 @@ release:
 # user would. Taps first, so a plain `brew install osumtimer` resolves.
 brew-install:
 	@brew tap vigneshmr/osumtimer
+	@# Recent Homebrew refuses casks from third-party taps until told otherwise.
+	@brew trust vigneshmr/osumtimer 2>/dev/null || true
 	@brew install osumtimer || brew upgrade osumtimer
 
 # Just the icon, for looking at it without a full build.

@@ -1,21 +1,65 @@
-import SwiftUI
+import AppKit
 
+/// Plain AppKit, not a SwiftUI `App`: the menu bar is driven by
+/// StatusItemController, and a SwiftUI app with no window scene opens its
+/// `Settings` scene on launch. See `SettingsWindow`.
 @main
-struct OsumTimerApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-
-    var body: some Scene {
-        // The menu bar is driven by StatusItemController, not by a scene. This
-        // is the app's only one; it also answers ⌘,.
-        Settings { SettingsView() }
-    }
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = Notifier()
     private var store: TimerStore?
     private var statusItems: StatusItemController?
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.mainMenu = mainMenu()
+        app.run()
+    }
+
+    /// Never shown — the app has no menu bar of its own — but its key
+    /// equivalents are what make ⌘, ⌘W ⌘Q and copy/paste in the panel's text
+    /// field work while the app is active.
+    private static func mainMenu() -> NSMenu {
+        func item(_ title: String, _ action: Selector?, _ key: String, _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            return item
+        }
+        func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+            let menu = NSMenu(title: title)
+            items.forEach(menu.addItem)
+            let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            parent.submenu = menu
+            return parent
+        }
+
+        let settings = item("Settings…", #selector(openSettings(_:)), ",")
+        let main = NSMenu()
+        main.addItem(submenu("OsumTimer", [
+            settings,
+            .separator(),
+            item("Quit OsumTimer", #selector(NSApplication.terminate(_:)), "q"),
+        ]))
+        main.addItem(submenu("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ]))
+        main.addItem(submenu("Window", [
+            item("Close", #selector(NSWindow.performClose(_:)), "w"),
+        ]))
+        return main
+    }
+
+    @objc private func openSettings(_ sender: Any?) {
+        SettingsWindow.show()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar only: no Dock icon, no main menu.
@@ -49,9 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Opening the app while it is already running arrives as a reopen Apple
-    /// event. Taken straight off the event manager rather than through
-    /// `applicationShouldHandleReopen`, which SwiftUI's scene machinery swallows
-    /// for an app whose only scene is `Settings`.
+    /// event, taken straight off the event manager.
     private func installReopenHandler() {
         NSAppleEventManager.shared().setEventHandler(
             self,

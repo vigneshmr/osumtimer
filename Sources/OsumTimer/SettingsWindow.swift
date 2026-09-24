@@ -1,17 +1,32 @@
 import AppKit
 import SwiftUI
 
-/// Opens the settings window declared as the app's `Settings` scene.
-///
-/// The scene is what answers ⌘, — so the gear goes through the same door rather
-/// than owning a second window that could sit beside the first.
+/// The one settings window, owned here rather than by a SwiftUI `Settings`
+/// scene: SwiftUI opens an app's only scene on launch, so a menu-bar app whose
+/// only scene is `Settings` greets every launch with an unasked-for window.
 @MainActor
 enum SettingsWindow {
+    private static var window: NSWindow?
+
     static func show() {
+        let window = self.window ?? make()
+        self.window = window
         // Accessory apps are not frontmost by default; without this the window
         // appears behind whatever you were using.
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private static func make() -> NSWindow {
+        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
+        window.title = "OsumTimer Settings"
+        window.styleMask = [.titled, .closable]
+        // Kept after closing, so reopening lands where you left it and the view's
+        // state survives; `onDisappear` still fires on close.
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.setFrameAutosaveName("OsumTimerSettings")
+        return window
     }
 }
 

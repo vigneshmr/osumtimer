@@ -64,6 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar only: no Dock icon, no main menu.
         NSApp.setActivationPolicy(.accessory)
+        // The system tooltip delay (~1s+) is too slow for icon-only buttons.
+        // Registered, not set, so a `defaults write` override still wins.
+        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 150])
         if DebugRender.runIfRequested() { return }
         notifier.requestAuthorization()
         // Reading it is what registers the login item on a first run; nothing

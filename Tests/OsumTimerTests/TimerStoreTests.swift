@@ -251,6 +251,30 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertEqual(timer.percentElapsed(at: start.addingTimeInterval(500)), 100)
     }
 
+    // MARK: - Direction
+
+    /// Counting up starts at 0:00, ends on the duration, and ticks over on the
+    /// same second as counting down would.
+    func testCountingUpMirrorsTheCountdown() {
+        let start = Date(timeIntervalSinceReferenceDate: Date().timeIntervalSinceReferenceDate.rounded(.down))
+        let timer = TimerItem(duration: 1500, direction: .up, now: start)
+
+        XCTAssertEqual(Parser.clock(for: timer.clockValue(at: start)), "0:00")
+        XCTAssertEqual(Parser.clock(for: timer.clockValue(at: start.addingTimeInterval(0.4))), "0:00")
+        XCTAssertEqual(Parser.clock(for: timer.clockValue(at: start.addingTimeInterval(61))), "1:01")
+        XCTAssertEqual(Parser.clock(for: timer.clockValue(at: start.addingTimeInterval(1500))), "25:00")
+        XCTAssertEqual(Parser.clock(for: timer.clockValue(at: start.addingTimeInterval(9000))), "25:00")
+        // Progress does not care which way the clock runs.
+        XCTAssertEqual(timer.progress(at: start.addingTimeInterval(750)), 0.5, accuracy: 0.001)
+    }
+
+    func testTimersFromBeforeDirectionDecodeAsCountingDown() throws {
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(TimerItem(duration: 60))) as! [String: Any]
+        json.removeValue(forKey: "direction")
+        let data = try JSONSerialization.data(withJSONObject: json)
+        XCTAssertEqual(try JSONDecoder().decode(TimerItem.self, from: data).direction, .down)
+    }
+
     func testDisplayModeTogglesAndSurvivesARelaunch() {
         let slot = Slot(timer: TimerItem(duration: 600))
         let filename = "test-\(UUID().uuidString).json"

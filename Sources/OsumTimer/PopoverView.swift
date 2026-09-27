@@ -298,7 +298,7 @@ private struct RunningPanel: View {
                 // will ever show — so nothing shifts when 10:00 becomes 9:59.
                 // Monospaced digits alone do not cover it: the character
                 // count changes too.
-                Text(percent ? "\(timer.percentElapsed(at: now))%" : Parser.clock(for: timer.remaining(at: now)))
+                Text(percent ? "\(timer.percentElapsed(at: now))%" : Parser.clock(for: timer.clockValue(at: now)))
                     .font(.system(size: 25, weight: .light).monospacedDigit())
                     .foregroundStyle(done ? Design.accent : Design.textPrimary)
                     .frame(minWidth: clockWidth, alignment: .leading)
@@ -399,6 +399,13 @@ private struct RunningPanel: View {
                             help: percent ? "Show as time" : "Show as percent", size: 28) {
                     store.toggleDisplay(slotID)
                 }
+                // Down to 0:00 or up to the full length. The arrow is the way
+                // the clock would run after pressing, like the display toggle
+                // beside it showing what it switches to.
+                GlyphButton(symbol: timer.direction == .down ? "arrow.up" : "arrow.down",
+                            help: timer.direction == .down ? "Count up" : "Count down", size: 28) {
+                    store.toggleDirection(slotID)
+                }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.
                 GlyphButton(symbol: "xmark", help: "Clear — keeps this menu bar item", size: 28) {
@@ -439,7 +446,7 @@ private struct RunningPanel: View {
         // A percentage on its own does not say how long that is; the clock
         // moves down here so it is still one glance away.
         let what = percent
-            ? Parser.clock(for: timer.remaining(at: now))
+            ? Parser.clock(for: timer.clockValue(at: now))
             : timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
         if timer.isReady { return "ready · \(what)" }
         if timer.isPaused { return "paused · \(what)" }

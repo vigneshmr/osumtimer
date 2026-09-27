@@ -96,7 +96,8 @@ final class TimerStore {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
         hush()
         slots[index].timer = TimerItem(
-            duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input
+            duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input,
+            direction: Preferences.shared.direction
         )
         catchUp()
         rememberRecent(parsed.expression)
@@ -174,6 +175,14 @@ final class TimerStore {
     func toggleDisplay(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.display = timer.display == .clock ? .percent : .clock
+        persist()
+    }
+
+    /// Flips a timer between counting down to 0:00 and up to its duration.
+    /// Display only, like `toggleDisplay`.
+    func toggleDirection(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
+        slots[index].timer!.direction = timer.direction == .down ? .up : .down
         persist()
     }
 

@@ -77,6 +77,7 @@ final class Preferences {
         static let alarmSound = "alarmSound"
         static let alarmRing = "alarmRing"
         static let launchAtLogin = "launchAtLogin"
+        static let direction = "countDirection"
     }
 
     /// Opens the app when you log in. A menu bar timer you have to remember to
@@ -115,6 +116,12 @@ final class Preferences {
         didSet { defaults.set(alarmRing.rawValue, forKey: Key.alarmRing) }
     }
 
+    /// Which way a new timer's clock runs. Each timer keeps its own after
+    /// that, so changing this leaves the ones already going as they are.
+    var direction: TimerItem.Direction {
+        didSet { defaults.set(direction.rawValue, forKey: Key.direction) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -135,6 +142,8 @@ final class Preferences {
         // which is a real choice here ("Once") and not what a first run wants.
         self.alarmRing = (defaults.object(forKey: Key.alarmRing) as? Int)
             .flatMap(AlarmRing.init(rawValue:)) ?? .tenSeconds
+        self.direction = defaults.string(forKey: Key.direction)
+            .flatMap(TimerItem.Direction.init(rawValue:)) ?? .down
         // On by default, so the first launch is the only one you have to do by
         // hand — but never re-registering behind the back of someone who turned
         // it off, here or in System Settings.

@@ -174,7 +174,7 @@ final class StatusItemController {
         let percent = timer.display == .percent ? timer.percentElapsed(at: store.tick) : nil
         // Percent alone does not say how long that is, so the clock rides
         // along in brackets: "98% (15:11)".
-        let clock = Parser.clock(for: timer.remaining(at: store.tick))
+        let clock = Parser.clock(for: timer.clockValue(at: store.tick))
         let title = if let percent {
             Self.padded("\(percent)% (\(clock))", to: "100% (\(Parser.clock(for: timer.duration)))")
         } else {

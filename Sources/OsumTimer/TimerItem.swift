@@ -46,16 +46,27 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// while a 3 minute egg wants the seconds.
     var display: DisplayMode = .clock
 
+    /// Which way the clock reads: time left, falling to 0:00, or time gone,
+    /// climbing to the full duration. The timer underneath is the same either
+    /// way — it still ends at `endsAt` — and so is the ring.
+    var direction: Direction = .down
+
     enum DisplayMode: String, Codable {
         case clock, percent
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display
+    enum Direction: String, Codable, CaseIterable, Identifiable {
+        case down, up
+
+        var id: String { rawValue }
     }
 
-    /// `display` arrived after timers were already on disk; a file without it
-    /// is a clock timer, not an unreadable one.
+    private enum CodingKeys: String, CodingKey {
+        case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction
+    }
+
+    /// `display` and `direction` arrived after timers were already on disk; a
+    /// file without them is a clock counting down, not an unreadable one.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -67,6 +78,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         target = try c.decodeIfPresent(ClockTarget.self, forKey: .target)
         input = try c.decodeIfPresent(String.self, forKey: .input)
         display = try c.decodeIfPresent(DisplayMode.self, forKey: .display) ?? .clock
+        direction = try c.decodeIfPresent(Direction.self, forKey: .direction) ?? .down
     }
 
     init(
@@ -74,6 +86,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         tag: String? = nil,
         target: ClockTarget? = nil,
         input: String? = nil,
+        direction: Direction = .down,
         now: Date = Date()
     ) {
         self.id = UUID()
@@ -84,6 +97,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         self.createdAt = now
         self.target = target
         self.input = input
+        self.direction = direction
     }
 
     /// End dates are snapped to a whole second so every timer's display rolls
@@ -108,6 +122,17 @@ struct TimerItem: Identifiable, Codable, Equatable {
         if let pausedRemaining { return pausedRemaining }
         guard let endsAt else { return 0 }
         return max(0, endsAt.timeIntervalSince(now))
+    }
+
+    /// The seconds the clock shows, in this timer's direction. Counting up is
+    /// taken off the whole-second remainder, so both directions roll over on
+    /// the same tick and a timer just set reads 0:00, not 0:01.
+    func clockValue(at now: Date = Date()) -> TimeInterval {
+        let remaining = remaining(at: now)
+        switch direction {
+        case .down: return remaining
+        case .up: return max(0, duration.rounded(.up) - remaining.rounded(.up))
+        }
     }
 
     func hasFired(at now: Date = Date()) -> Bool {

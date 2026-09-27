@@ -100,6 +100,19 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Timer direction", selection: $preferences.direction) {
+                    Text("Down").tag(TimerItem.Direction.down)
+                    Text("Up").tag(TimerItem.Direction.up)
+                }
+                .pickerStyle(.segmented)
+
+                Text("New timers count down to 0:00, or up to their length. Each timer’s arrow button flips it.")
+                    .font(Design.caption)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Picker("Appearance", selection: $preferences.appearance) {
                 ForEach(AppearanceMode.allCases) { mode in
                     Text(mode.label).tag(mode)

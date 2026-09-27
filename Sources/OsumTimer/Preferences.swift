@@ -78,6 +78,7 @@ final class Preferences {
         static let alarmRing = "alarmRing"
         static let launchAtLogin = "launchAtLogin"
         static let direction = "countDirection"
+        static let showProgressBar = "showProgressBar"
     }
 
     /// Opens the app when you log in. A menu bar timer you have to remember to
@@ -122,6 +123,12 @@ final class Preferences {
         didSet { defaults.set(direction.rawValue, forKey: Key.direction) }
     }
 
+    /// Whether a new timer starts in percent mode, with its progress bar, in
+    /// the bar and the panel. Off by default: most timers want the clock.
+    var showProgressBar: Bool {
+        didSet { defaults.set(showProgressBar, forKey: Key.showProgressBar) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -144,6 +151,7 @@ final class Preferences {
             .flatMap(AlarmRing.init(rawValue:)) ?? .tenSeconds
         self.direction = defaults.string(forKey: Key.direction)
             .flatMap(TimerItem.Direction.init(rawValue:)) ?? .down
+        self.showProgressBar = defaults.bool(forKey: Key.showProgressBar)
         // On by default, so the first launch is the only one you have to do by
         // hand — but never re-registering behind the back of someone who turned
         // it off, here or in System Settings.

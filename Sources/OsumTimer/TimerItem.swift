@@ -86,6 +86,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         tag: String? = nil,
         target: ClockTarget? = nil,
         input: String? = nil,
+        display: DisplayMode = .clock,
         direction: Direction = .down,
         now: Date = Date()
     ) {
@@ -97,6 +98,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         self.createdAt = now
         self.target = target
         self.input = input
+        self.display = display
         self.direction = direction
     }
 

@@ -97,6 +97,7 @@ final class TimerStore {
         hush()
         slots[index].timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input,
+            display: Preferences.shared.showProgressBar ? .percent : .clock,
             direction: Preferences.shared.direction
         )
         catchUp()

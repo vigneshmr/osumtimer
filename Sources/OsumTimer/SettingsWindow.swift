@@ -101,6 +101,15 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
+                Toggle("Show progress bar", isOn: $preferences.showProgressBar)
+
+                Text("New timers read as a percentage with a bar, as “34% (15:11)”. Each timer’s % button flips it.")
+                    .font(Design.caption)
+                    .foregroundStyle(Design.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
                 Picker("Timer direction", selection: $preferences.direction) {
                     Text("Down").tag(TimerItem.Direction.down)
                     Text("Up").tag(TimerItem.Direction.up)

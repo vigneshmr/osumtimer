@@ -392,16 +392,17 @@ private struct RunningPanel: View {
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
                                 isDefault: !pausesOnReturn) { reset() }
                 }
-                // Clock or percent: how this one timer reads, in the bar and
-                // here. Offered in every state, since a finished timer still
-                // shows a number.
-                GlyphButton(symbol: percent ? "clock" : "percent",
-                            help: percent ? "Show as time" : "Show as percent", size: 28) {
+                // The progress bar, on or off, in the bar and here. The time
+                // shows either way, so this is an on/off switch, lit while on.
+                // Offered in every state, since a finished timer still shows a
+                // number.
+                GlyphButton(symbol: "percent",
+                            help: percent ? "Hide progress bar" : "Show progress bar", size: 28,
+                            prominent: percent) {
                     store.toggleDisplay(slotID)
                 }
                 // Down to 0:00 or up to the full length. The arrow is the way
-                // the clock would run after pressing, like the display toggle
-                // beside it showing what it switches to.
+                // the clock would run after pressing.
                 GlyphButton(symbol: timer.direction == .down ? "arrow.up" : "arrow.down",
                             help: timer.direction == .down ? "Count up" : "Count down", size: 28) {
                     store.toggleDirection(slotID)

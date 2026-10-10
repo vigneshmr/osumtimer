@@ -98,7 +98,8 @@ final class TimerStore {
         slots[index].timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input,
             display: Preferences.shared.showProgressBar ? .percent : .clock,
-            direction: Preferences.shared.direction
+            direction: Preferences.shared.direction,
+            showTotal: Preferences.shared.showTotal
         )
         catchUp()
         rememberRecent(parsed.expression)
@@ -184,6 +185,14 @@ final class TimerStore {
     func toggleDirection(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.direction = timer.direction == .down ? .up : .down
+        persist()
+    }
+
+    /// Shows or hides what a timer's clock is out of. Display only, like
+    /// `toggleDisplay`.
+    func toggleShowTotal(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        slots[index].timer!.showTotal.toggle()
         persist()
     }
 

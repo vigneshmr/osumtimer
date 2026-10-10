@@ -127,4 +127,27 @@ final class TimerItemTests: XCTestCase {
         }
     }
 
+    /// The menu bar form: short, and in the locale's 12 or 24 hour clock.
+    func testClockTargetShortLabel() {
+        let us = Locale(identifier: "en_US")
+        XCTAssertEqual(ClockTarget(hour: 15, minute: 0).shortLabel(locale: us), "@3pm")
+        XCTAssertEqual(ClockTarget(hour: 9, minute: 30).shortLabel(locale: us), "@9:30am")
+        XCTAssertEqual(ClockTarget(hour: 0, minute: 0).shortLabel(locale: us), "@12am")
+        XCTAssertEqual(ClockTarget(hour: 15, minute: 5).shortLabel(locale: Locale(identifier: "de_DE")), "@15:05")
+    }
+
+    /// With the total, a length reads "of" it and a time of day reads "to" it.
+    func testClockWithTotal() {
+        let timer = TimerItem(duration: 900, now: now)
+        XCTAssertEqual(timer.clock(484, showTotal: false), "8:04")
+        XCTAssertEqual(timer.clock(484, showTotal: true), "8:04 of 15:00")
+
+        let targeted = TimerItem(duration: 900, target: ClockTarget(hour: 15, minute: 0), now: now)
+        XCTAssertTrue(targeted.clock(484, showTotal: true).hasPrefix("8:04 to @"))
+
+        var own = timer
+        XCTAssertEqual(own.clock(484), "8:04")
+        own.showTotal = true
+        XCTAssertEqual(own.clock(484), "8:04 of 15:00")
+    }
 }

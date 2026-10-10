@@ -398,9 +398,19 @@ private struct RunningPanel: View {
                 // number.
                 GlyphButton(symbol: "percent",
                             help: percent ? "Hide progress bar" : "Show progress bar", size: 28,
-                            prominent: percent) {
+                            isOn: percent) {
                     store.toggleDisplay(slotID)
                 }
+                // What the clock is out of — "8:04 of 15:00". Disabled, not
+                // hidden, with the bar off, since the bar is the only place the
+                // total shows; keeping it in place stops the row from shifting.
+                GlyphButton(symbol: "sum",
+                            help: percent ? (timer.showTotal ? "Hide total" : "Show total")
+                                          : "Show total — needs the progress bar",
+                            size: 28, isOn: timer.showTotal) {
+                    store.toggleShowTotal(slotID)
+                }
+                .disabled(!percent)
                 // Down to 0:00 or up to the full length. The arrow is the way
                 // the clock would run after pressing.
                 GlyphButton(symbol: timer.direction == .down ? "arrow.up" : "arrow.down",
@@ -447,7 +457,7 @@ private struct RunningPanel: View {
         // A percentage on its own does not say how long that is; the clock
         // moves down here so it is still one glance away.
         let what = percent
-            ? Parser.clock(for: timer.clockValue(at: now))
+            ? timer.clock(timer.clockValue(at: now))
             : timer.target.map { "until \($0.label())" } ?? Parser.echo(for: timer.duration)
         if timer.isReady { return "ready · \(what)" }
         if timer.isPaused { return "paused · \(what)" }

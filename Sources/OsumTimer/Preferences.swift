@@ -79,6 +79,7 @@ final class Preferences {
         static let launchAtLogin = "launchAtLogin"
         static let direction = "countDirection"
         static let showProgressBar = "showProgressBar"
+        static let showTotal = "showTotal"
     }
 
     /// Opens the app when you log in. A menu bar timer you have to remember to
@@ -129,6 +130,13 @@ final class Preferences {
         didSet { defaults.set(showProgressBar, forKey: Key.showProgressBar) }
     }
 
+    /// Whether a new timer's percent mode says what the clock is out of:
+    /// "44% (8:04 of 15:00)" rather than "44% (8:04)". Off by default: menu
+    /// bar width is the scarcest resource in the app.
+    var showTotal: Bool {
+        didSet { defaults.set(showTotal, forKey: Key.showTotal) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -152,6 +160,7 @@ final class Preferences {
         self.direction = defaults.string(forKey: Key.direction)
             .flatMap(TimerItem.Direction.init(rawValue:)) ?? .down
         self.showProgressBar = defaults.bool(forKey: Key.showProgressBar)
+        self.showTotal = defaults.bool(forKey: Key.showTotal)
         // On by default, so the first launch is the only one you have to do by
         // hand — but never re-registering behind the back of someone who turned
         // it off, here or in System Settings.

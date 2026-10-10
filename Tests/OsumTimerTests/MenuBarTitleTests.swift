@@ -46,6 +46,17 @@ final class MenuBarTitleTests: XCTestCase {
         }
     }
 
+    /// With the total shown only the clock moves: "0% (0:00 of 25:00)"
+    /// through "100% (25:00 of 25:00)" all measure the same.
+    func testEveryPercentWithTotalIsOneWidth() {
+        let timer = TimerItem(duration: 1500)
+        let widest = "100% (\(timer.clock(1500, showTotal: true)))"
+        for value in stride(from: 1500.0, through: 0, by: -15) {
+            let percent = Int((1 - value / 1500) * 100)
+            assertSameWidth("\(percent)% (\(timer.clock(value, showTotal: true)))", widest)
+        }
+    }
+
     func testFullWidthTitleIsLeftAlone() {
         XCTAssertEqual(StatusItemController.padded("10:00", to: "10:00"), "10:00")
     }

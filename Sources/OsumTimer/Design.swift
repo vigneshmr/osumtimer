@@ -109,16 +109,32 @@ struct GlyphButton: View {
     var help: String
     var size: CGFloat = 20
     var prominent = false
+    /// Set for a switch: on fills the button with the accent, off is a plain
+    /// button. Nil for a one-shot action. Glyph colour alone was too faint a
+    /// difference to tell on from off at a glance.
+    var isOn: Bool? = nil
     /// The button Return presses. Ringed so the key's effect is visible before
     /// it is pressed, the way a default button reads in a dialog.
     var isDefault = false
     var action: () -> Void
 
     @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var on: Bool { isOn == true }
 
     private var foreground: Color {
+        if !isEnabled { return Design.textFaint }
+        if on { return .white }
         if prominent { return Design.accent }
         return hovering ? Design.textPrimary : Design.textSecondary
+    }
+
+    private var fill: Color {
+        if on { return Design.accent.opacity(isEnabled ? (hovering ? 0.85 : 1) : 0.35) }
+        // Disabled sheds its fill so it reads as absent, not merely quiet.
+        if !isEnabled { return .clear }
+        return hovering ? Design.hairline : Design.surfaceRaised
     }
 
     var body: some View {
@@ -129,7 +145,11 @@ struct GlyphButton: View {
                 .frame(width: size, height: size)
                 .background(
                     RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
-                        .fill(hovering ? Design.hairline : Design.surfaceRaised)
+                        .fill(fill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
+                        .strokeBorder(Design.hairline, lineWidth: isEnabled ? 0 : 1)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
@@ -140,5 +160,6 @@ struct GlyphButton: View {
         .onHover { hovering = $0 }
         .help(help)
         .accessibilityLabel(help)
+        .accessibilityAddTraits(isOn == true ? .isSelected : [])
     }
 }

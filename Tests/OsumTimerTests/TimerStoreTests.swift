@@ -300,5 +300,6 @@ final class TimerStoreTests: XCTestCase {
         """
         let timer = try JSONDecoder().decode(TimerItem.self, from: Data(json.utf8))
         XCTAssertEqual(timer.display, .clock)
+        XCTAssertFalse(timer.showTotal)
     }
 }

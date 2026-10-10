@@ -51,6 +51,10 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// way — it still ends at `endsAt` — and so is the ring.
     var direction: Direction = .down
 
+    /// Whether percent mode says what the clock is out of: "8:04 of 15:00",
+    /// or "8:04 to @3pm". Per timer, like `display`.
+    var showTotal: Bool = false
+
     enum DisplayMode: String, Codable {
         case clock, percent
     }
@@ -62,11 +66,12 @@ struct TimerItem: Identifiable, Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction
+        case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction, showTotal
     }
 
-    /// `display` and `direction` arrived after timers were already on disk; a
-    /// file without them is a clock counting down, not an unreadable one.
+    /// `display`, `direction` and `showTotal` arrived after timers were already
+    /// on disk; a file without them is a clock counting down, not an unreadable
+    /// one.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -79,6 +84,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         input = try c.decodeIfPresent(String.self, forKey: .input)
         display = try c.decodeIfPresent(DisplayMode.self, forKey: .display) ?? .clock
         direction = try c.decodeIfPresent(Direction.self, forKey: .direction) ?? .down
+        showTotal = try c.decodeIfPresent(Bool.self, forKey: .showTotal) ?? false
     }
 
     init(
@@ -88,6 +94,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         input: String? = nil,
         display: DisplayMode = .clock,
         direction: Direction = .down,
+        showTotal: Bool = false,
         now: Date = Date()
     ) {
         self.id = UUID()
@@ -100,6 +107,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         self.input = input
         self.display = display
         self.direction = direction
+        self.showTotal = showTotal
     }
 
     /// End dates are snapped to a whole second so every timer's display rolls
@@ -135,6 +143,17 @@ struct TimerItem: Identifiable, Codable, Equatable {
         case .down: return remaining
         case .up: return max(0, duration.rounded(.up) - remaining.rounded(.up))
         }
+    }
+
+    /// A clock reading with what it is out of: "8:04 of 15:00", or for a timer
+    /// set to a time of day, "8:04 to @3pm" — the length it worked out to is
+    /// not what was asked for. Without `showTotal`, just the clock.
+    func clock(_ value: TimeInterval, showTotal: Bool? = nil) -> String {
+        let showTotal = showTotal ?? self.showTotal
+        let clock = Parser.clock(for: value)
+        guard showTotal else { return clock }
+        if let target { return "\(clock) to \(target.shortLabel())" }
+        return "\(clock) of \(Parser.clock(for: duration))"
     }
 
     func hasFired(at now: Date = Date()) -> Bool {

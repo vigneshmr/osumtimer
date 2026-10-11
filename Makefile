@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 # Bumped by hand; `make package VERSION=1.1.0` overrides it for a one-off.
-VERSION := 1.1.0
+VERSION := 1.1.1
 
 .PHONY: run debug setup build test clean package app reinstall icon release brew-install
 

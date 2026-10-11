@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Registered, not set, so a `defaults write` override still wins.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 150])
         if DebugRender.runIfRequested() { return }
+        if handOffToRunningInstance() { return }
         notifier.requestAuthorization()
         // Reading it is what registers the login item on a first run; nothing
         // else is guaranteed to touch preferences before you open Settings.
@@ -93,6 +94,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installReopenHandler()
         presentDraftPanel()
+    }
+
+    /// Launch Services only routes a launch to the running copy when it is the
+    /// same bundle on disk. Opening another copy — the build directory, the
+    /// mounted disk image — starts a second process: a second menu bar item,
+    /// and two stores writing over each other's file. So a launch that finds
+    /// OsumTimer already running reopens that one, the way opening it again
+    /// normally would, and quits before it has touched anything.
+    ///
+    /// Reopened through `openApplication`, not a notification of our own: it
+    /// lands on the existing reopen handler, so it works on an older copy too.
+    private func handOffToRunningInstance() -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return false }
+        let me = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != me && !$0.isTerminated }
+        guard let running = others.min(by: { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }),
+              let url = running.bundleURL else { return false }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+        return true
     }
 
     /// Opening the app while it is already running arrives as a reopen Apple

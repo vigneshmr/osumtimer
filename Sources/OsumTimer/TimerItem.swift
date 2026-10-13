@@ -51,8 +51,8 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// way — it still ends at `endsAt` — and so is the ring.
     var direction: Direction = .down
 
-    /// Whether percent mode says what the clock is out of: "8:04 of 15:00",
-    /// or "8:04 to @3pm". Per timer, like `display`.
+    /// Whether the clock says what it is out of: "8:04 / 15:00", or
+    /// "8:04 to 3pm". Per timer, like `display`, and independent of it.
     var showTotal: Bool = false
 
     enum DisplayMode: String, Codable {
@@ -145,15 +145,15 @@ struct TimerItem: Identifiable, Codable, Equatable {
         }
     }
 
-    /// A clock reading with what it is out of: "8:04 of 15:00", or for a timer
-    /// set to a time of day, "8:04 to @3pm" — the length it worked out to is
+    /// A clock reading with what it is out of: "8:04 / 15:00", or for a timer
+    /// set to a time of day, "8:04 to 3pm" — the length it worked out to is
     /// not what was asked for. Without `showTotal`, just the clock.
     func clock(_ value: TimeInterval, showTotal: Bool? = nil) -> String {
         let showTotal = showTotal ?? self.showTotal
         let clock = Parser.clock(for: value)
         guard showTotal else { return clock }
         if let target { return "\(clock) to \(target.shortLabel())" }
-        return "\(clock) of \(Parser.clock(for: duration))"
+        return "\(clock) / \(Parser.clock(for: duration))"
     }
 
     func hasFired(at now: Date = Date()) -> Bool {

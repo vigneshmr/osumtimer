@@ -124,7 +124,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Show total", isOn: $preferences.showTotal)
 
-                Text("With the progress bar, new timers say what the time is out of, as “34% (8:04 of 15:00)”, or “(8:04 to @3pm)” for a time of day. Each timer’s Σ button flips it.")
+                Text("New timers say what the time is out of, as “8:04 / 15:00”, or “8:04 to 3pm” for a time of day. Each timer’s Σ button flips it.")
                     .font(Design.caption)
                     .foregroundStyle(Design.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

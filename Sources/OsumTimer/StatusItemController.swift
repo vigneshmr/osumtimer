@@ -173,14 +173,15 @@ final class StatusItemController {
         let done = timer.hasFired(at: store.tick)
         let percent = timer.display == .percent ? timer.percentElapsed(at: store.tick) : nil
         // Percent alone does not say how long that is, so the clock rides
-        // along in brackets: "98% (15:11)", or "98% (15:11 of 25:00)".
+        // along in brackets: "98% (15:11)", or "98% (15:11 / 25:00)". Without
+        // percent, the clock alone: "15:11", or "15:11 / 25:00".
         let title = if let percent {
             Self.padded(
                 "\(percent)% (\(timer.clock(timer.clockValue(at: store.tick))))",
                 to: "100% (\(timer.clock(timer.duration)))"
             )
         } else {
-            Self.padded(Parser.clock(for: timer.clockValue(at: store.tick)), to: Parser.clock(for: timer.duration))
+            Self.padded(timer.clock(timer.clockValue(at: store.tick)), to: timer.clock(timer.duration))
         }
 
         // Only touch the button when what it renders actually changes; the state

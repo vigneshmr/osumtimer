@@ -130,8 +130,8 @@ final class Preferences {
         didSet { defaults.set(showProgressBar, forKey: Key.showProgressBar) }
     }
 
-    /// Whether a new timer's percent mode says what the clock is out of:
-    /// "44% (8:04 of 15:00)" rather than "44% (8:04)". Off by default: menu
+    /// Whether a new timer says what the clock is out of: "8:04 / 15:00"
+    /// rather than "8:04", with or without the percentage. Off by default: menu
     /// bar width is the scarcest resource in the app.
     var showTotal: Bool {
         didSet { defaults.set(showTotal, forKey: Key.showTotal) }

@@ -51,16 +51,16 @@ struct ClockTarget: Equatable, Codable {
         return formatter.string(from: date)
     }
 
-    /// "@3pm", "@3:30pm", or "@15:00" where the locale reads a 24-hour clock —
+    /// "3pm", "3:30pm", or "15:00" where the locale reads a 24-hour clock —
     /// short enough to ride in the menu bar beside a countdown.
     func shortLabel(locale: Locale = .current) -> String {
         let pattern = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
-        guard pattern.contains("a") else { return String(format: "@%d:%02d", hour, minute) }
+        guard pattern.contains("a") else { return String(format: "%d:%02d", hour, minute) }
         let suffix = hour < 12 ? "am" : "pm"
         let twelve = hour % 12 == 0 ? 12 : hour % 12
         return minute == 0
-            ? "@\(twelve)\(suffix)"
-            : String(format: "@%d:%02d%@", twelve, minute, suffix)
+            ? "\(twelve)\(suffix)"
+            : String(format: "%d:%02d%@", twelve, minute, suffix)
     }
 }
 

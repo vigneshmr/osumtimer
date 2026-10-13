@@ -46,8 +46,8 @@ final class MenuBarTitleTests: XCTestCase {
         }
     }
 
-    /// With the total shown only the clock moves: "0% (0:00 of 25:00)"
-    /// through "100% (25:00 of 25:00)" all measure the same.
+    /// With the total shown only the clock moves: "0% (0:00 / 25:00)"
+    /// through "100% (25:00 / 25:00)" all measure the same.
     func testEveryPercentWithTotalIsOneWidth() {
         let timer = TimerItem(duration: 1500)
         let widest = "100% (\(timer.clock(1500, showTotal: true)))"

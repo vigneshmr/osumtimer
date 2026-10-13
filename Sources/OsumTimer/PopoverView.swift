@@ -401,16 +401,13 @@ private struct RunningPanel: View {
                             isOn: percent) {
                     store.toggleDisplay(slotID)
                 }
-                // What the clock is out of — "8:04 of 15:00". Disabled, not
-                // hidden, with the bar off, since the bar is the only place the
-                // total shows; keeping it in place stops the row from shifting.
+                // What the clock is out of — "8:04 / 15:00". Independent of
+                // the bar: it applies to the clock with or without it.
                 GlyphButton(symbol: "sum",
-                            help: percent ? (timer.showTotal ? "Hide total" : "Show total")
-                                          : "Show total — needs the progress bar",
+                            help: timer.showTotal ? "Hide total" : "Show total",
                             size: 28, isOn: timer.showTotal) {
                     store.toggleShowTotal(slotID)
                 }
-                .disabled(!percent)
                 // Down to 0:00 or up to the full length. The arrow is the way
                 // the clock would run after pressing.
                 GlyphButton(symbol: timer.direction == .down ? "arrow.up" : "arrow.down",

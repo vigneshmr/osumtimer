@@ -35,7 +35,8 @@ struct SettingsView: View {
 
     /// Read once: the sound folders do not change while the window is open, and
     /// re-scanning the disk on every redraw would be wasteful.
-    @State private var sounds = SoundCatalog.names()
+    @State private var bundledSounds = SoundCatalog.bundledNames()
+    @State private var systemSounds = SoundCatalog.systemNames()
 
     private var preview = SoundPreview.shared
     private var sounding: Bool { preview.playing == preferences.alarmSound }
@@ -69,7 +70,18 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Picker("Alarm sound", selection: $preferences.alarmSound) {
-                    ForEach(sounds, id: \.self) { Text($0).tag($0) }
+                    // Under `swift run` there is no bundle, so no first section
+                    // and no header for a list with nothing to tell apart.
+                    if bundledSounds.isEmpty {
+                        ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
+                    } else {
+                        Section("Calm") {
+                            ForEach(bundledSounds, id: \.self) { Text($0).tag($0) }
+                        }
+                        Section("System") {
+                            ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
                 }
                 // Selecting plays it, so the choice is made by ear rather than by
                 // guessing what "Sosumi" sounds like.

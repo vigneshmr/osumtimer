@@ -34,6 +34,12 @@ cp "$(swift build -c release --package-path "$ROOT" --show-bin-path)/OsumTimer" 
 echo "==> Drawing icon"
 swift "$ROOT/scripts/make-icon.swift" "$APP/Contents/Resources/OsumTimer.icns"
 
+echo "==> Synthesising alarm sounds"
+# Compiled rather than interpreted: optimised, the DSP takes a second or two.
+swiftc -O "$ROOT/scripts/make-sounds.swift" -o "$BUILD/make-sounds"
+"$BUILD/make-sounds" "$APP/Contents/Resources" >/dev/null
+rm -f "$BUILD/make-sounds"
+
 echo "==> Writing Info.plist"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

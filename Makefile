@@ -3,7 +3,7 @@ SHELL := /bin/bash
 # Bumped by hand; `make package VERSION=1.1.0` overrides it for a one-off.
 VERSION := 1.1.1
 
-.PHONY: run debug setup build test clean package app reinstall icon release brew-install
+.PHONY: run debug setup build test clean package app reinstall icon sounds release brew-install
 
 # Launch the menu bar app in the foreground; Ctrl-C to stop.
 run:
@@ -69,6 +69,12 @@ brew-install:
 icon:
 	@mkdir -p build
 	@swift scripts/make-icon.swift build/OsumTimer.icns && echo "build/OsumTimer.icns"
+
+# Just the alarm sounds, for auditioning them without a full build.
+sounds:
+	@mkdir -p build
+	@swiftc -O scripts/make-sounds.swift -o build/make-sounds
+	@build/make-sounds build/sounds >/dev/null && rm -f build/make-sounds && echo "build/sounds/"
 
 clean:
 	swift package clean

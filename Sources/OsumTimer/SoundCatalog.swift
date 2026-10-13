@@ -3,26 +3,40 @@ import Observation
 
 /// The sounds available as an alarm tone.
 ///
-/// macOS keeps these as loose files in two system-wide directories, and
-/// `NSSound(named:)` resolves a bare name across both of them — so nothing has
-/// to be bundled. `~/Library/Sounds` is deliberately not scanned: under the App
-/// Sandbox `NSHomeDirectory()` points into the app's container, so the lookup
-/// would find nothing anyway.
+/// Two sources. The app ships its own — soft, slow-decaying tones synthesised
+/// by `scripts/make-sounds.swift` into the bundle's Resources — and macOS keeps
+/// its fourteen as loose files in two system-wide directories. `NSSound(named:)`
+/// searches the main bundle first and then those directories, so a bare name
+/// resolves wherever it lives. `~/Library/Sounds` is deliberately not scanned:
+/// under the App Sandbox `NSHomeDirectory()` points into the app's container,
+/// so the lookup would find nothing anyway.
 enum SoundCatalog {
     /// Short, bright, and not a notification chime. Lives here rather than on
     /// `Preferences` so the alarm path can reach it without hopping to the main
     /// actor.
     static let fallback = "Pop"
 
-    private static let directories = [
+    private static let systemDirectories = [
         "/Library/Sounds",         // installed for everyone
         "/System/Library/Sounds",  // the fourteen that ship with macOS
     ]
 
     private static let playable: Set<String> = ["aiff", "aif", "wav", "m4a", "caf", "mp3"]
 
+    /// The app's own sounds, alphabetical. Empty under `swift run`, which has
+    /// no bundle to carry them.
+    static func bundledNames() -> [String] {
+        names(in: [Bundle.main.resourcePath].compactMap { $0 })
+    }
+
+    /// The system's sounds, alphabetical, minus any the bundle shadows.
+    static func systemNames() -> [String] {
+        let bundled = Set(bundledNames())
+        return names(in: systemDirectories).filter { !bundled.contains($0) }
+    }
+
     /// Sound names, alphabetical, without duplicates or file extensions.
-    static func names() -> [String] {
+    private static func names(in directories: [String]) -> [String] {
         var seen = Set<String>()
         var found: [String] = []
 

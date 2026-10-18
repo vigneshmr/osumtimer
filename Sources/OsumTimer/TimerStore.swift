@@ -25,10 +25,18 @@ final class TimerStore {
     private var ringWork: [UUID: DispatchWorkItem] = [:]
     private let notifier: Notifier
     private let store: Persistence
+    private let preferences: Preferences
 
-    init(notifier: Notifier = Notifier(), store: Persistence = Persistence()) {
+    init(
+        notifier: Notifier = Notifier(),
+        store: Persistence = Persistence(),
+        // Optional rather than `= .shared`: a default argument is evaluated off
+        // the main actor, where `shared` cannot be reached.
+        preferences: Preferences? = nil
+    ) {
         self.notifier = notifier
         self.store = store
+        self.preferences = preferences ?? .shared
 
         let snapshot = store.load()
         // Untouched drafts carry no information, so they are dropped on launch:
@@ -97,9 +105,9 @@ final class TimerStore {
         hush()
         slots[index].timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input,
-            display: Preferences.shared.showProgressBar ? .percent : .clock,
-            direction: Preferences.shared.direction,
-            showTotal: Preferences.shared.showTotal
+            display: preferences.showProgressBar ? .percent : .clock,
+            direction: preferences.direction,
+            showTotal: preferences.showTotal
         )
         catchUp()
         rememberRecent(parsed.expression)
@@ -168,6 +176,13 @@ final class TimerStore {
             slots[index].draft = input
         } else {
             slots[index].timer!.restart()
+            // A reset timer is a reused one, so it picks up the latest choices
+            // the same way a new one would.
+            if preferences.rememberLastChoice {
+                slots[index].timer!.display = preferences.showProgressBar ? .percent : .clock
+                slots[index].timer!.direction = preferences.direction
+                slots[index].timer!.showTotal = preferences.showTotal
+            }
         }
         persist()
     }
@@ -177,6 +192,9 @@ final class TimerStore {
     func toggleDisplay(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.display = timer.display == .clock ? .percent : .clock
+        if preferences.rememberLastChoice {
+            preferences.showProgressBar = slots[index].timer!.display == .percent
+        }
         persist()
     }
 
@@ -185,6 +203,7 @@ final class TimerStore {
     func toggleDirection(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.direction = timer.direction == .down ? .up : .down
+        if preferences.rememberLastChoice { preferences.direction = slots[index].timer!.direction }
         persist()
     }
 
@@ -193,6 +212,7 @@ final class TimerStore {
     func toggleShowTotal(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
         slots[index].timer!.showTotal.toggle()
+        if preferences.rememberLastChoice { preferences.showTotal = slots[index].timer!.showTotal }
         persist()
     }
 
@@ -255,10 +275,10 @@ final class TimerStore {
         notifier.fire(
             tag: timer.tag,
             duration: timer.duration,
-            sound: Preferences.shared.alarmSound,
-            ringFor: Preferences.shared.alarmRing.seconds
+            sound: preferences.alarmSound,
+            ringFor: preferences.alarmRing.seconds
         )
-        startRinging(id, for: Preferences.shared.alarmRing.seconds)
+        startRinging(id, for: preferences.alarmRing.seconds)
         // The item stays, reading 0:00, until you deal with it — an item that
         // clears itself leaves you unsure whether it ever ran.
         tick = Date()

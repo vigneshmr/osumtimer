@@ -4,14 +4,23 @@ import XCTest
 @MainActor
 final class TimerStoreTests: XCTestCase {
     private var scratchFiles: [String] = []
+    private var scratchSuites: [String] = []
+
+    /// Preferences in a throwaway defaults suite, so toggling a timer in one
+    /// test never changes what the next one starts with.
+    private func scratchPreferences() -> Preferences {
+        let suite = "test-\(UUID().uuidString)"
+        scratchSuites.append(suite)
+        return Preferences(defaults: UserDefaults(suiteName: suite)!)
+    }
 
     /// A store backed by a throwaway file, preloaded with `snapshot`.
-    private func store(_ snapshot: Snapshot) -> TimerStore {
+    private func store(_ snapshot: Snapshot, preferences: Preferences? = nil) -> TimerStore {
         let filename = "test-\(UUID().uuidString).json"
         scratchFiles.append(filename)
         let persistence = Persistence(filename: filename)
         persistence.save(snapshot)
-        return TimerStore(store: persistence)
+        return TimerStore(store: persistence, preferences: preferences ?? scratchPreferences())
     }
 
     override func tearDown() {
@@ -22,6 +31,10 @@ final class TimerStoreTests: XCTestCase {
             try? FileManager.default.removeItem(at: base.appendingPathComponent(file))
         }
         scratchFiles = []
+        for suite in scratchSuites {
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
+        scratchSuites = []
         super.tearDown()
     }
 
@@ -282,12 +295,12 @@ final class TimerStoreTests: XCTestCase {
         let persistence = Persistence(filename: filename)
         persistence.save(Snapshot(slots: [slot]))
 
-        let first = TimerStore(store: persistence)
+        let first = TimerStore(store: persistence, preferences: scratchPreferences())
         XCTAssertEqual(first.slots[0].timer?.display, .clock)
         first.toggleDisplay(slot.id)
         XCTAssertEqual(first.slots[0].timer?.display, .percent)
 
-        let second = TimerStore(store: persistence)
+        let second = TimerStore(store: persistence, preferences: scratchPreferences())
         XCTAssertEqual(second.slots[0].timer?.display, .percent)
         second.toggleDisplay(slot.id)
         XCTAssertEqual(second.slots[0].timer?.display, .clock)
@@ -301,5 +314,51 @@ final class TimerStoreTests: XCTestCase {
         let timer = try JSONDecoder().decode(TimerItem.self, from: Data(json.utf8))
         XCTAssertEqual(timer.display, .clock)
         XCTAssertFalse(timer.showTotal)
+    }
+
+    /// Flipping a timer's display makes that the default for the next timer.
+    func testTogglesBecomeTheDefaultForNewTimers() {
+        let preferences = scratchPreferences()
+        let loaded = store(Snapshot(slots: []), preferences: preferences)
+        let first = loaded.slots[0].id
+        loaded.start(first, with: try! Parser.parse("15m").get())
+        loaded.toggleDisplay(first)
+        loaded.toggleShowTotal(first)
+        loaded.toggleDirection(first)
+
+        let next = loaded.addSlot()
+        loaded.start(next, with: try! Parser.parse("5m").get())
+        let timer = loaded.slot(next)!.timer!
+        XCTAssertEqual(timer.display, .percent)
+        XCTAssertTrue(timer.showTotal)
+        XCTAssertEqual(timer.direction, .up)
+    }
+
+    /// A reset timer picks up choices made on other timers since it started.
+    func testRestartAdoptsRememberedChoices() {
+        let preferences = scratchPreferences()
+        let loaded = store(Snapshot(slots: []), preferences: preferences)
+        let old = loaded.slots[0].id
+        loaded.start(old, with: try! Parser.parse("15m").get())
+        let other = loaded.addSlot()
+        loaded.start(other, with: try! Parser.parse("5m").get())
+        loaded.toggleShowTotal(other)
+
+        loaded.restart(old)
+        XCTAssertTrue(loaded.slot(old)!.timer!.showTotal)
+    }
+
+    /// With remembering off, a toggle stays with its own timer.
+    func testTogglesStayPutWhenRememberingIsOff() {
+        let preferences = scratchPreferences()
+        preferences.rememberLastChoice = false
+        let loaded = store(Snapshot(slots: []), preferences: preferences)
+        let first = loaded.slots[0].id
+        loaded.start(first, with: try! Parser.parse("15m").get())
+        loaded.toggleShowTotal(first)
+
+        XCTAssertFalse(preferences.showTotal)
+        loaded.restart(first)
+        XCTAssertTrue(loaded.slot(first)!.timer!.showTotal)
     }
 }

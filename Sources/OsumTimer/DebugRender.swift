@@ -10,8 +10,12 @@ enum DebugRender {
     static func runIfRequested() -> Bool {
         guard let path = ProcessInfo.processInfo.environment["OSUMTIMER_RENDER"] else { return false }
 
-        // A scratch store, so a render never touches real saved timers.
-        let store = TimerStore(store: Persistence(filename: "render-preview.json"))
+        // A scratch store and scratch preferences, so a render never touches real
+        // saved timers — nor, through a toggle below, the real defaults.
+        let store = TimerStore(
+            store: Persistence(filename: "render-preview.json"),
+            preferences: Preferences(defaults: UserDefaults(suiteName: "OsumTimerRender")!)
+        )
         let running = store.slots[0].id
         // `OSUMTIMER_RENDER_INPUT="167h #a-very-long-tag"` renders worst-case content.
         let input = ProcessInfo.processInfo.environment["OSUMTIMER_RENDER_INPUT"] ?? "25m #deepwork"

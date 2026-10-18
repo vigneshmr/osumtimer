@@ -17,15 +17,6 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The same choice for SwiftUI-owned windows.
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
-    }
-
     /// nil means "inherit", which is what following the system amounts to.
     var appearance: NSAppearance? {
         switch self {
@@ -80,6 +71,7 @@ final class Preferences {
         static let direction = "countDirection"
         static let showProgressBar = "showProgressBar"
         static let showTotal = "showTotal"
+        static let rememberLastChoice = "rememberLastChoice"
     }
 
     /// Opens the app when you log in. A menu bar timer you have to remember to
@@ -137,6 +129,13 @@ final class Preferences {
         didSet { defaults.set(showTotal, forKey: Key.showTotal) }
     }
 
+    /// Flipping % , Σ or the arrow on any timer also makes that the default
+    /// for the next one — and for any timer reset after it. On by default: the
+    /// last choice you made is the best guess at the next one.
+    var rememberLastChoice: Bool {
+        didSet { defaults.set(rememberLastChoice, forKey: Key.rememberLastChoice) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -161,6 +160,8 @@ final class Preferences {
             .flatMap(TimerItem.Direction.init(rawValue:)) ?? .down
         self.showProgressBar = defaults.bool(forKey: Key.showProgressBar)
         self.showTotal = defaults.bool(forKey: Key.showTotal)
+        self.rememberLastChoice = defaults.object(forKey: Key.rememberLastChoice)
+            as? Bool ?? true
         // On by default, so the first launch is the only one you have to do by
         // hand — but never re-registering behind the back of someone who turned
         // it off, here or in System Settings.

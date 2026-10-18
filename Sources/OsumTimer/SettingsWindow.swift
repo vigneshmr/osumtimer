@@ -26,7 +26,15 @@ enum SettingsWindow {
         window.isReleasedWhenClosed = false
         window.center()
         window.setFrameAutosaveName("OsumTimerSettings")
+        window.appearance = Preferences.shared.appearance.appearance
         return window
+    }
+
+    /// Set on the window rather than through `preferredColorScheme`: SwiftUI
+    /// never undoes a scheme once set, so going back to System after Dark left
+    /// the window dark. A nil `NSAppearance` really does follow the system.
+    static func apply(_ mode: AppearanceMode) {
+        window?.appearance = mode.appearance
     }
 }
 
@@ -50,114 +58,132 @@ struct SettingsView: View {
         return "OsumTimer \(short)"
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Show label in menu bar", isOn: $preferences.showLabelsInMenuBar)
+    /// White capitals on a dark grey pill: a header has to read as a different
+    /// kind of thing from the rows under it — at row size it read as one more
+    /// row, and as bare grey capitals it was hard to read at all.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 12, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            // A shade lighter in dark mode, where the same grey would sink into the window.
+            .background(Color(light: .init(white: 0.32, alpha: 1), dark: .init(white: 0.40, alpha: 1)), in: Capsule())
+    }
 
-                Text("A tagged timer shows its tag beside the countdown, as “Therapy 2:12”.")
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+    var body: some View {
+        // Grouped by what a setting is about, not the order it was added in:
+        // how a timer reads, how it ends, then the app around it.
+        Form {
+            Section {
+                Toggle(isOn: $preferences.showProgressBar) {
+                    Text("Show progress bar")
+                    Text("Reads as “34% (15:11)” with a bar.")
+                }
+                Toggle(isOn: $preferences.showTotal) {
+                    Text("Show total")
+                    Text("Reads as “8:04 / 15:00”, or “8:04 to 3pm”.")
+                }
+                Picker(selection: $preferences.direction) {
+                    Text("Down").tag(TimerItem.Direction.down)
+                    Text("Up").tag(TimerItem.Direction.up)
+                } label: {
+                    Text("Count")
+                    Text("To 0:00, or up to the length.")
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                Toggle(isOn: $preferences.rememberLastChoice) {
+                    Text("Remember last choice")
+                    Text("Flipping %, Σ or the arrow on any timer updates these, for new timers and any you reset.")
+                }
+            } header: {
+                sectionHeader("New timers")
             }
 
-            // Unavailable under `swift run`: no bundle, nothing to register.
-            Toggle("Open at login", isOn: $preferences.launchAtLogin)
-                .disabled(!LoginItem.isSupported)
-                .help(LoginItem.isSupported
-                    ? "Opens OsumTimer when you log in."
-                    : "Only available in the packaged app.")
+            Section {
+                LabeledContent("Sound") {
+                    HStack(spacing: 6) {
+                        Picker("Sound", selection: $preferences.alarmSound) {
+                            // Under `swift run` there is no bundle, so no first section
+                            // and no header for a list with nothing to tell apart.
+                            if bundledSounds.isEmpty {
+                                ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
+                            } else {
+                                Section("Calm") {
+                                    ForEach(bundledSounds, id: \.self) { Text($0).tag($0) }
+                                }
+                                Section("System") {
+                                    ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
+                                }
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        // Selecting plays it, so the choice is made by ear rather than by
+                        // guessing what "Sosumi" sounds like.
+                        .onChange(of: preferences.alarmSound) { _, name in preview.play(name) }
 
-            HStack(spacing: 8) {
-                Picker("Alarm sound", selection: $preferences.alarmSound) {
-                    // Under `swift run` there is no bundle, so no first section
-                    // and no header for a list with nothing to tell apart.
-                    if bundledSounds.isEmpty {
-                        ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
-                    } else {
-                        Section("Calm") {
-                            ForEach(bundledSounds, id: \.self) { Text($0).tag($0) }
+                        // Stops as readily as it starts: the same button, showing what
+                        // pressing it now would do.
+                        Button {
+                            preview.toggle(preferences.alarmSound)
+                        } label: {
+                            Image(systemName: sounding ? "stop.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 16))
                         }
-                        Section("System") {
-                            ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
-                        }
+                        .buttonStyle(.borderless)
+                        .help(sounding ? "Stop" : "Play")
+                        .accessibilityLabel(sounding ? "Stop alarm sound" : "Play alarm sound")
                     }
                 }
-                // Selecting plays it, so the choice is made by ear rather than by
-                // guessing what "Sosumi" sounds like.
-                .onChange(of: preferences.alarmSound) { _, name in preview.play(name) }
-
-                // Stops as readily as it starts: the same button, showing what
-                // pressing it now would do.
-                Button {
-                    preview.toggle(preferences.alarmSound)
-                } label: {
-                    Image(systemName: sounding ? "stop.circle" : "play.circle")
-                }
-                .buttonStyle(.borderless)
-                .help(sounding ? "Stop" : "Play")
-                .accessibilityLabel(sounding ? "Stop alarm sound" : "Play alarm sound")
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Ring for", selection: $preferences.alarmRing) {
+                Picker(selection: $preferences.alarmRing) {
                     ForEach(AlarmRing.allCases) { ring in
                         Text(ring.label).tag(ring)
                     }
+                } label: {
+                    Text("Ring for")
+                    Text("Past “Once”, the sound loops until time is up or you touch the timer.")
                 }
-
-                Text("Anything past “Once” loops the sound until the time is up, or until you touch the timer.")
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                sectionHeader("Alarm")
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Show progress bar", isOn: $preferences.showProgressBar)
-
-                Text("New timers read as a percentage with a bar, as “34% (15:11)”. Each timer’s % button flips it.")
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Show total", isOn: $preferences.showTotal)
-
-                Text("New timers say what the time is out of, as “8:04 / 15:00”, or “8:04 to 3pm” for a time of day. Each timer’s Σ button flips it.")
-                    .font(Design.caption)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Timer direction", selection: $preferences.direction) {
-                    Text("Down").tag(TimerItem.Direction.down)
-                    Text("Up").tag(TimerItem.Direction.up)
+            Section {
+                Toggle(isOn: $preferences.showLabelsInMenuBar) {
+                    Text("Show label in menu bar")
+                    Text("A tagged timer reads as “Therapy 2:12”.")
+                }
+                Picker("Appearance", selection: $preferences.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
                 }
                 .pickerStyle(.segmented)
-
-                Text("New timers count down to 0:00, or up to their length. Each timer’s arrow button flips it.")
+                .fixedSize()
+                // Unavailable under `swift run`: no bundle, nothing to register.
+                Toggle("Open at login", isOn: $preferences.launchAtLogin)
+                    .disabled(!LoginItem.isSupported)
+                    .help(LoginItem.isSupported
+                        ? "Opens OsumTimer when you log in."
+                        : "Only available in the packaged app.")
+            } header: {
+                sectionHeader("General")
+            } footer: {
+                Text(version)
                     .font(Design.caption)
-                    .foregroundStyle(Design.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(Design.textFaint)
+                    .frame(maxWidth: .infinity)
             }
-
-            Picker("Appearance", selection: $preferences.appearance) {
-                ForEach(AppearanceMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Text(version)
-                .font(Design.caption)
-                .foregroundStyle(Design.textFaint)
         }
-        .padding(20)
-        .frame(width: 360, alignment: .leading)
+        .formStyle(.grouped)
+        // Everything fits; a scroller here would only ever wobble.
+        .scrollDisabled(true)
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
         // The window restyles while you are looking at it, not on next open.
-        .preferredColorScheme(preferences.appearance.colorScheme)
+        .onChange(of: preferences.appearance) { _, mode in SettingsWindow.apply(mode) }
         // A preview outliving the window would be a sound with nothing on screen
         // to stop it — the app has no other visible surface to turn it off from.
         .onDisappear { preview.stop() }

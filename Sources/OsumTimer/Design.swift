@@ -118,8 +118,13 @@ struct GlyphButton: View {
     var isDefault = false
     var action: () -> Void
 
-    @State private var hovering = false
+    @State private var mouseOver = false
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.pointedGlyph) private var pointedGlyph
+
+    /// Under the pointer — or posing as if it were, in a guide picture.
+    private var pointed: Bool { pointedGlyph == symbol }
+    private var hovering: Bool { mouseOver || pointed }
 
     private var on: Bool { isOn == true }
 
@@ -156,10 +161,24 @@ struct GlyphButton: View {
                         .strokeBorder(Design.accent.opacity(isDefault ? 0.7 : 0), lineWidth: 1.5)
                 )
         }
+        .overlay(alignment: .bottomTrailing) {
+            if pointed {
+                Image(systemName: "cursorarrow")
+                    .font(.system(size: size * 0.55, weight: .regular))
+                    .foregroundStyle(.black)
+                    .shadow(color: .white, radius: 0.5)
+                    .offset(x: size * 0.3, y: size * 0.4)
+            }
+        }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .onHover { mouseOver = $0 }
         .help(help)
         .accessibilityLabel(help)
         .accessibilityAddTraits(isOn == true ? .isSelected : [])
     }
+}
+
+extension EnvironmentValues {
+    /// The symbol of the button a guide picture shows the pointer resting on.
+    @Entry var pointedGlyph: String? = nil
 }

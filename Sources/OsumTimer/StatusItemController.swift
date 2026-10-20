@@ -172,17 +172,7 @@ final class StatusItemController {
 
         let done = timer.hasFired(at: store.tick)
         let percent = timer.display == .percent ? timer.percentElapsed(at: store.tick) : nil
-        // Percent alone does not say how long that is, so the clock rides
-        // along in brackets: "98% (15:11)", or "98% (15:11 / 25:00)". Without
-        // percent, the clock alone: "15:11", or "15:11 / 25:00".
-        let title = if let percent {
-            Self.padded(
-                "\(percent)% (\(timer.clock(timer.clockValue(at: store.tick))))",
-                to: "100% (\(timer.clock(timer.duration)))"
-            )
-        } else {
-            Self.padded(timer.clock(timer.clockValue(at: store.tick)), to: timer.clock(timer.duration))
-        }
+        let title = Self.title(for: timer, at: store.tick)
 
         // Only touch the button when what it renders actually changes; the state
         // is part of that, since it decides how the title is coloured.
@@ -231,6 +221,20 @@ final class StatusItemController {
             button.image = nil
             button.imagePosition = .noImage
         }
+    }
+
+    /// What the item reads for a timer. Percent alone does not say how long
+    /// that is, so the clock rides along in brackets: "98% (15:11)", or
+    /// "98% (15:11 / 25:00)". Without percent, the clock alone: "15:11", or
+    /// "15:11 / 25:00".
+    static func title(for timer: TimerItem, at now: Date) -> String {
+        if timer.display == .percent {
+            return padded(
+                "\(timer.percentElapsed(at: now))% (\(timer.clock(timer.clockValue(at: now))))",
+                to: "100% (\(timer.clock(timer.duration)))"
+            )
+        }
+        return padded(timer.clock(timer.clockValue(at: now)), to: timer.clock(timer.duration))
     }
 
     /// Pads a countdown out to the width of the longest string this timer will

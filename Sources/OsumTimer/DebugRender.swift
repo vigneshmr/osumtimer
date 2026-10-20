@@ -30,6 +30,16 @@ enum DebugRender {
         render(SlotView(slotID: running).environment(store), to: path)
         render(SlotView(slotID: draft).environment(store), to: (path as NSString).deletingPathExtension + "-draft.png")
 
+        // The guide's pictures, as the settings window shows them.
+        let base = (path as NSString).deletingPathExtension
+        for scheme in [ColorScheme.light, .dark] {
+            for (index, image) in GuidePictures.render(scheme).enumerated() {
+                guard let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:]) else { continue }
+                try? png.write(to: URL(fileURLWithPath: "\(base)-guide-\(scheme == .dark ? "dark" : "light")-\(index + 1).png"))
+            }
+        }
+
         exit(0)
     }
 

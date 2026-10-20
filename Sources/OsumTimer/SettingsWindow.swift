@@ -47,6 +47,11 @@ struct SettingsView: View {
     @State private var systemSounds = SoundCatalog.systemNames()
 
     private var preview = SoundPreview.shared
+
+    /// The guide takes over the window rather than opening one of its own, and
+    /// at the form's height, so going in and back out never resizes it.
+    @State private var showingGuide = false
+    @State private var formHeight: CGFloat = 0
     private var sounding: Bool { preview.playing == preferences.alarmSound }
 
     /// Reads the bundle, so it can only disagree with the installer if the
@@ -73,6 +78,26 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        Group {
+            if showingGuide {
+                GuideView { showingGuide = false }
+                    .frame(width: 460, height: formHeight)
+            } else {
+                form
+            }
+        }
+        // The window restyles while you are looking at it, not on next open.
+        .onChange(of: preferences.appearance) { _, mode in SettingsWindow.apply(mode) }
+        .onDisappear {
+            // A preview outliving the window would be a sound with nothing on screen
+            // to stop it — the app has no other visible surface to turn it off from.
+            preview.stop()
+            // Opened from a panel's gear, the window is asked for settings.
+            showingGuide = false
+        }
+    }
+
+    private var form: some View {
         // Grouped by what a setting is about, not the order it was added in:
         // how a timer reads, how it ends, then the app around it.
         Form {
@@ -151,6 +176,12 @@ struct SettingsView: View {
             }
 
             Section {
+                LabeledContent {
+                    Button("Open") { showingGuide = true }
+                } label: {
+                    Text("Guide")
+                    Text("Starting, pausing, resetting, % and Σ, in pictures.")
+                }
                 Toggle(isOn: $preferences.showLabelsInMenuBar) {
                     Text("Show label in menu bar")
                     Text("A tagged timer reads as “Therapy 2:12”.")
@@ -182,10 +213,6 @@ struct SettingsView: View {
         .scrollDisabled(true)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
-        // The window restyles while you are looking at it, not on next open.
-        .onChange(of: preferences.appearance) { _, mode in SettingsWindow.apply(mode) }
-        // A preview outliving the window would be a sound with nothing on screen
-        // to stop it — the app has no other visible surface to turn it off from.
-        .onDisappear { preview.stop() }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { formHeight = $0 }
     }
 }

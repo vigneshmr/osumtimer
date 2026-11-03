@@ -361,4 +361,50 @@ final class TimerStoreTests: XCTestCase {
         loaded.restart(first)
         XCTAssertTrue(loaded.slot(first)!.timer!.showTotal)
     }
+
+    // MARK: - Intervals
+
+    func testIntervalsSplitTheRunAndStopFreezesIt() {
+        let timer = TimerItem(duration: 600, now: Date().addingTimeInterval(-120))
+        let slot = Slot(timer: timer)
+        let loaded = store(Snapshot(slots: [slot]))
+
+        loaded.toggleIntervals(slot.id)
+        loaded.nameInterval(slot.id, "Warm up")
+        loaded.nextInterval(slot.id)
+        loaded.nameInterval(slot.id, "Sets")
+        loaded.stop(slot.id)
+
+        let stopped = loaded.slot(slot.id)!.timer!
+        XCTAssertTrue(stopped.stopped)
+        XCTAssertTrue(stopped.isOver())
+        let segments = stopped.segments()
+        XCTAssertEqual(segments.map(\.name), ["Warm up", "Sets"])
+        XCTAssertEqual(segments[0].length, 120, accuracy: 1)
+        XCTAssertEqual(segments[1].length, 0, accuracy: 1)
+
+        // Stopped is over: no resuming, no more segments.
+        loaded.togglePause(slot.id)
+        loaded.nextInterval(slot.id)
+        XCTAssertTrue(loaded.slot(slot.id)!.timer!.isPaused)
+        XCTAssertEqual(loaded.slot(slot.id)!.timer!.intervals!.count, 2)
+
+        let markdown = stopped.intervalsMarkdown()
+        XCTAssertTrue(markdown.contains("| 1 | Warm up | 2:00 |"), markdown)
+        XCTAssertTrue(markdown.contains("**Total**"), markdown)
+
+        // Reset starts a fresh, single segment and un-stops.
+        loaded.restart(slot.id)
+        let reset = loaded.slot(slot.id)!.timer!
+        XCTAssertFalse(reset.stopped)
+        XCTAssertEqual(reset.intervals, [.init(name: "", start: 0)])
+    }
+
+    func testUnnamedIntervalsAreNumberedInMarkdown() {
+        var timer = TimerItem(duration: 600, now: Date().addingTimeInterval(-60))
+        timer.intervals = [.init(name: "", start: 0), .init(name: "a|b", start: 30)]
+        let markdown = timer.intervalsMarkdown()
+        XCTAssertTrue(markdown.contains("| 1 | Interval 1 | 0:30 |"), markdown)
+        XCTAssertTrue(markdown.contains("a\\|b"), markdown)
+    }
 }

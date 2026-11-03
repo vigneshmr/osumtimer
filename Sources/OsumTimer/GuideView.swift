@@ -135,13 +135,28 @@ private struct GuideStep {
         ),
         GuideStep(
             title: "Show percentage",
-            how: Text("\(glyph("percent")) reads the timer as how far along it is, with a bar, in the panel and the menu bar. The clock moves to the line below."),
+            how: Text("\(glyph("ellipsis")) → Progress bar reads the timer as how far along it is, with a bar, in the panel and the menu bar. The clock moves to the line below."),
             slot: running { $0.display = .percent }
         ),
         GuideStep(
             title: "Show total",
-            how: Text("\(glyph("sum")) adds what the clock is out of: “16:04 / 25:00”, or “16:04 to 3pm” for a time of day."),
+            how: Text("\(glyph("ellipsis")) → Show total adds what the clock is out of: “16:04 / 25:00”, or “16:04 to 3pm” for a time of day."),
             slot: running { $0.showTotal = true }
+        ),
+        GuideStep(
+            title: "Intervals",
+            how: Text("\(glyph("ellipsis")) → Intervals cuts the run into segments. Type a name, then Return or \(glyph("forward.end.fill")) starts the next at 0:00 — the timer carries on."),
+            slot: running { $0.intervals = [.init(name: "Warm up", start: 0), .init(name: "Sets", start: 300), .init(name: "", start: 470)] },
+            pointing: "forward.end.fill"
+        ),
+        GuideStep(
+            title: "Stop and copy",
+            how: Text("\(glyph("stop.fill")) ends the run and lists the intervals. Copy as Markdown puts them on the clipboard as a table."),
+            slot: running {
+                $0.intervals = [.init(name: "Warm up", start: 0), .init(name: "Sets", start: 300), .init(name: "Cool down", start: 470)]
+                $0.pause()
+                $0.stopped = true
+            }
         ),
     ] }
 }
@@ -181,6 +196,7 @@ enum GuidePictures {
             }
             let view = GuideScene(slotID: id)
                 .environment(\.pointedGlyph, step.pointing)
+                .environment(\.isPicture, true)
                 .environment(store)
                 .environment(\.colorScheme, scheme)
             let renderer = ImageRenderer(content: view)

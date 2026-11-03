@@ -246,9 +246,15 @@ private struct RunningPanel: View {
     /// being watched; anything else means a new duration is being written.
     @Binding var typed: String
     @Environment(TimerStore.self) private var store
-    @FocusState private var capturing: Bool
+    @FocusState private var focus: Focus?
+    @State private var copied = false
+    @Environment(\.isPicture) private var isPicture
+
+    private enum Focus { case capture, name }
 
     private var done: Bool { timer.hasFired(at: now) }
+    private var over: Bool { timer.isOver(at: now) }
+    private var intervalsOn: Bool { timer.intervals != nil }
     private var percent: Bool { timer.display == .percent }
     private var editing: Bool { !typed.isEmpty }
 
@@ -267,11 +273,15 @@ private struct RunningPanel: View {
                     .textFieldStyle(.plain)
                     .font(Design.input)
                     .foregroundStyle(Design.textPrimary)
-                    .focused($capturing)
+                    .focused($focus, equals: .capture)
                     .onSubmit(submit)
                     .opacity(editing ? 1 : 0)
 
-                if !editing { countdown }
+                if !editing {
+                    countdown
+                        .contentShape(.rect)
+                        .onTapGesture { focus = .capture }
+                }
             }
             .frame(maxWidth: .infinity)
 
@@ -279,13 +289,123 @@ private struct RunningPanel: View {
                 hint
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                if intervalsOn { intervals }
                 controls
             }
         }
         .padding(.horizontal, Design.gutter)
         .padding(.top, 12)
         .padding(.bottom, 11)
-        .onAppear { capturing = true }
+        // In interval mode the keyboard goes to the segment's name: typing
+        // names it, Return starts the next. Clicking the clock hands it back,
+        // for typing a new duration.
+        .onAppear { focus = intervalsOn && !over ? .name : .capture }
+        .onChange(of: intervalsOn) { _, on in focus = on && !over ? .name : .capture }
+        .onChange(of: over) { _, isOver in
+            if isOver { focus = .capture } else { copied = false }
+        }
+    }
+
+    // MARK: - Intervals
+
+    private var nameBinding: Binding<String> {
+        Binding(
+            get: { timer.intervals?.last?.name ?? "" },
+            set: { store.nameInterval(slotID, $0) }
+        )
+    }
+
+    /// Finished segments above the one running now; once the run is over,
+    /// every segment, a total, and a copy button.
+    @ViewBuilder
+    private var intervals: some View {
+        let segments = timer.segments(at: now)
+        VStack(spacing: 4) {
+            let finished = over ? segments : Array(segments.dropLast())
+            ForEach(Array(finished.enumerated()), id: \.offset) { index, segment in
+                segmentRow(index, segment.name, segment.length)
+            }
+            if over {
+                HStack {
+                    Text("Total").foregroundStyle(Design.textSecondary)
+                    Spacer()
+                    Text(Parser.clock(for: timer.elapsed(at: now)))
+                        .foregroundStyle(Design.textPrimary)
+                        .monospacedDigit()
+                }
+                .font(Design.caption.weight(.medium))
+                .padding(.horizontal, 8)
+                Button {
+                    let board = NSPasteboard.general
+                    board.clearContents()
+                    board.setString(timer.intervalsMarkdown(at: now), forType: .string)
+                    copied = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        Text(copied ? "Copied" : "Copy as Markdown")
+                    }
+                    .font(Design.caption)
+                    .foregroundStyle(Design.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
+                        .fill(Design.surfaceRaised))
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Copy the intervals as a Markdown table")
+                .padding(.top, 2)
+            } else if let current = segments.last {
+                HStack(spacing: 6) {
+                    Group {
+                        if isPicture {
+                            Text("Interval \(segments.count)")
+                                .foregroundStyle(Design.textFaint)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            TextField("Interval \(segments.count)", text: nameBinding)
+                                .textFieldStyle(.plain)
+                                .foregroundStyle(Design.textPrimary)
+                                .focused($focus, equals: .name)
+                                .onSubmit { store.nextInterval(slotID) }
+                        }
+                    }
+                    .font(Design.caption)
+                    Text(Parser.clock(for: current.length))
+                        .font(Design.caption.monospacedDigit())
+                        .foregroundStyle(Design.accent)
+                    GlyphButton(symbol: "forward.end.fill", help: "Next interval — Return", size: 22) {
+                        store.nextInterval(slotID)
+                    }
+                }
+                .padding(.leading, 8)
+                .padding(.vertical, 3)
+                .padding(.trailing, 3)
+                .background(RoundedRectangle(cornerRadius: Design.radiusSmall, style: .continuous)
+                    .fill(Design.surfaceRaised))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func segmentRow(_ index: Int, _ name: String, _ length: TimeInterval) -> some View {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return HStack(spacing: 6) {
+            Text("\(index + 1)")
+                .foregroundStyle(Design.textFaint)
+                .monospacedDigit()
+            Text(trimmed.isEmpty ? "Interval \(index + 1)" : trimmed)
+                .foregroundStyle(trimmed.isEmpty ? Design.textSecondary : Design.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 4)
+            Text(Parser.clock(for: length))
+                .foregroundStyle(Design.textSecondary)
+                .monospacedDigit()
+        }
+        .font(Design.caption)
+        .padding(.horizontal, 8)
     }
 
     /// The ring, the clock and its status line — what you see when not typing.
@@ -358,7 +478,7 @@ private struct RunningPanel: View {
     /// The control Return presses, and the one drawn as default. While the
     /// timer still has time on it the useful move is to stop or restart the
     /// count; once it has rung, the only thing left to do is reset it.
-    private var pausesOnReturn: Bool { !done }
+    private var pausesOnReturn: Bool { !over }
 
     private func defaultAction() {
         if pausesOnReturn {
@@ -378,7 +498,7 @@ private struct RunningPanel: View {
 
     private var controls: some View {
         HStack(spacing: 7) {
-                if done {
+                if over {
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
                                 prominent: true, isDefault: true) {
                         reset()
@@ -391,28 +511,18 @@ private struct RunningPanel: View {
                     }
                     GlyphButton(symbol: "arrow.clockwise", help: "Reset", size: 28,
                                 isDefault: !pausesOnReturn) { reset() }
+                    // Ends an interval run here and shows what it came to.
+                    if intervalsOn {
+                        GlyphButton(symbol: "stop.fill", help: "Stop — show intervals", size: 28) {
+                            store.stop(slotID)
+                        }
+                    }
                 }
-                // The progress bar, on or off, in the bar and here. The time
-                // shows either way, so this is an on/off switch, lit while on.
-                // Offered in every state, since a finished timer still shows a
-                // number.
-                GlyphButton(symbol: "percent",
-                            help: percent ? "Hide progress bar" : "Show progress bar", size: 28,
-                            isOn: percent) {
-                    store.toggleDisplay(slotID)
-                }
-                // What the clock is out of — "8:04 / 15:00". Independent of
-                // the bar: it applies to the clock with or without it.
-                GlyphButton(symbol: "sum",
-                            help: timer.showTotal ? "Hide total" : "Show total",
-                            size: 28, isOn: timer.showTotal) {
-                    store.toggleShowTotal(slotID)
-                }
-                // Down to 0:00 or up to the full length. The arrow is the way
-                // the clock would run after pressing.
-                GlyphButton(symbol: timer.direction == .down ? "arrow.up" : "arrow.down",
-                            help: timer.direction == .down ? "Count up" : "Count down", size: 28) {
-                    store.toggleDirection(slotID)
+                // How the timer reads — %, Σ, direction — and interval mode.
+                // Set once and left, so they sit a click away rather than
+                // beside the controls used every time.
+                GlyphButton(symbol: "ellipsis", help: "More", size: 28) {
+                    showOptions()
                 }
                 // Clear keeps the item and its place in the bar. Removing it
                 // outright is the footer's trash, in every panel state.
@@ -421,6 +531,28 @@ private struct RunningPanel: View {
                 }
             }
             .frame(maxWidth: .infinity)
+    }
+
+    private func showOptions() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(ActionMenuItem("Progress bar", symbol: "percent", on: percent) {
+            store.toggleDisplay(slotID)
+        })
+        menu.addItem(ActionMenuItem("Show total", symbol: "sum", on: timer.showTotal) {
+            store.toggleShowTotal(slotID)
+        })
+        menu.addItem(ActionMenuItem("Count up", symbol: "arrow.up", on: timer.direction == .up) {
+            store.toggleDirection(slotID)
+        })
+        menu.addItem(.separator())
+        let intervals = ActionMenuItem("Intervals", symbol: "flag", on: intervalsOn) {
+            store.toggleIntervals(slotID)
+        }
+        // Switching on after the run has ended has nothing left to cut up.
+        intervals.isEnabled = intervalsOn || !over
+        menu.addItem(intervals)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     @ViewBuilder
@@ -451,6 +583,7 @@ private struct RunningPanel: View {
     /// hour later, while "until 4:00 PM" is what was actually asked for.
     private var word: String {
         if done { return "done" }
+        if timer.stopped { return "stopped · \(Parser.clock(for: timer.elapsed(at: now)))" }
         // A percentage on its own does not say how long that is; the clock
         // moves down here so it is still one glance away.
         let what = percent
@@ -461,4 +594,21 @@ private struct RunningPanel: View {
         return what
     }
 
+}
+
+/// An `NSMenuItem` that runs a closure, with a checkmark for a switch.
+private final class ActionMenuItem: NSMenuItem {
+    private let run: () -> Void
+
+    init(_ title: String, symbol: String, on: Bool, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+        state = on ? .on : .off
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    }
+
+    required init(coder: NSCoder) { fatalError() }
+
+    @objc private func fire() { run() }
 }

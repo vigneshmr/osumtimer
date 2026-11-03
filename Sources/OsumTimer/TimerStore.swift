@@ -146,7 +146,8 @@ final class TimerStore {
     // MARK: - Timer commands
 
     func togglePause(_ id: UUID) {
-        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil,
+              !slots[index].timer!.stopped else { return }
         if slots[index].timer!.isPaused {
             slots[index].timer!.resume()
             catchUp()
@@ -213,6 +214,43 @@ final class TimerStore {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
         slots[index].timer!.showTotal.toggle()
         if preferences.rememberLastChoice { preferences.showTotal = slots[index].timer!.showTotal }
+        persist()
+    }
+
+    /// Interval mode on or off. On cuts the run so far into its first
+    /// segment, from 0:00, so the segments always add up to the whole run.
+    func toggleIntervals(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
+        slots[index].timer!.intervals = timer.intervals == nil ? [.init(name: "", start: 0)] : nil
+        persist()
+    }
+
+    /// Names the segment running now.
+    func nameInterval(_ id: UUID, _ name: String) {
+        guard let index = slots.firstIndex(where: { $0.id == id }),
+              let count = slots[index].timer?.intervals?.count, count > 0,
+              slots[index].timer!.intervals![count - 1].name != name else { return }
+        slots[index].timer!.intervals![count - 1].name = name
+        persist()
+    }
+
+    /// Closes the running segment and opens the next, at 0:00. The timer
+    /// itself carries on untouched.
+    func nextInterval(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer,
+              timer.intervals != nil, !timer.isReady, !timer.isOver(at: Date()) else { return }
+        slots[index].timer!.intervals!.append(.init(name: "", start: timer.elapsed(at: Date())))
+        persist()
+    }
+
+    /// Ends the run here, before the buzzer: frozen, never to fire, and showing
+    /// its intervals. Reset or clear take it from there.
+    func stop(_ id: UUID) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        cancelFire(id)
+        hush()
+        slots[index].timer!.pause()
+        slots[index].timer!.stopped = true
         persist()
     }
 

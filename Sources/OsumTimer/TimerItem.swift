@@ -55,6 +55,21 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// "8:04 to 3pm". Per timer, like `display`, and independent of it.
     var showTotal: Bool = false
 
+    /// Interval mode: the run cut into named segments, in order. nil is off.
+    /// Each segment holds only where it starts, in elapsed seconds; it ends
+    /// where the next one starts, and the last ends at the timer's own elapsed
+    /// time — so pausing, stopping and finishing need no bookkeeping here.
+    var intervals: [Interval]?
+
+    /// Ended by hand, before the buzzer. Frozen like a pause, but over: the
+    /// panel shows the intervals, and only reset or clear go on from here.
+    var stopped: Bool = false
+
+    struct Interval: Codable, Equatable {
+        var name: String
+        var start: TimeInterval
+    }
+
     enum DisplayMode: String, Codable {
         case clock, percent
     }
@@ -67,6 +82,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction, showTotal
+        case intervals, stopped
     }
 
     /// `display`, `direction` and `showTotal` arrived after timers were already
@@ -85,6 +101,8 @@ struct TimerItem: Identifiable, Codable, Equatable {
         display = try c.decodeIfPresent(DisplayMode.self, forKey: .display) ?? .clock
         direction = try c.decodeIfPresent(Direction.self, forKey: .direction) ?? .down
         showTotal = try c.decodeIfPresent(Bool.self, forKey: .showTotal) ?? false
+        intervals = try c.decodeIfPresent([Interval].self, forKey: .intervals)
+        stopped = try c.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
     }
 
     init(
@@ -156,6 +174,38 @@ struct TimerItem: Identifiable, Codable, Equatable {
         return "\(clock) / \(Parser.clock(for: duration))"
     }
 
+    /// Whole seconds run so far, on the same tick as the clock.
+    func elapsed(at now: Date = Date()) -> TimeInterval {
+        max(0, duration.rounded(.up) - remaining(at: now).rounded(.up))
+    }
+
+    /// Over, one way or the other: the buzzer went, or it was stopped.
+    func isOver(at now: Date = Date()) -> Bool { stopped || hasFired(at: now) }
+
+    /// Each segment with its length; the last one runs to now.
+    func segments(at now: Date = Date()) -> [(name: String, length: TimeInterval)] {
+        guard let intervals else { return [] }
+        let end = elapsed(at: now)
+        return intervals.enumerated().map { index, interval in
+            let next = index + 1 < intervals.count ? intervals[index + 1].start : end
+            return (interval.name, max(0, next - interval.start))
+        }
+    }
+
+    /// The segments as a Markdown table, ready to paste. Unnamed ones are
+    /// numbered, so the table never has a blank cell.
+    func intervalsMarkdown(at now: Date = Date()) -> String {
+        let segments = segments(at: now)
+        var lines = ["## \(tag.map { "#\($0)" } ?? "Intervals")", "", "| # | Interval | Time |", "|---|---|---|"]
+        for (index, segment) in segments.enumerated() {
+            let name = segment.name.trimmingCharacters(in: .whitespaces)
+            let cell = (name.isEmpty ? "Interval \(index + 1)" : name).replacingOccurrences(of: "|", with: "\\|")
+            lines.append("| \(index + 1) | \(cell) | \(Parser.clock(for: segment.length)) |")
+        }
+        lines.append("| | **Total** | **\(Parser.clock(for: elapsed(at: now)))** |")
+        return lines.joined(separator: "\n")
+    }
+
     func hasFired(at now: Date = Date()) -> Bool {
         !isPaused && remaining(at: now) <= 0
     }
@@ -197,5 +247,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         }
         pausedRemaining = duration
         endsAt = nil
+        stopped = false
+        if intervals != nil { intervals = [Interval(name: "", start: 0)] }
     }
 }

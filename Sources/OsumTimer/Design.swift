@@ -181,4 +181,7 @@ struct GlyphButton: View {
 extension EnvironmentValues {
     /// The symbol of the button a guide picture shows the pointer resting on.
     @Entry var pointedGlyph: String? = nil
+    /// Drawing offscreen, where a text field renders as a placeholder sign —
+    /// so fields draw their text instead.
+    @Entry var isPicture = false
 }

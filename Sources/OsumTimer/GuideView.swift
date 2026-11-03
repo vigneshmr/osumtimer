@@ -150,6 +150,14 @@ private struct GuideStep {
             pointing: "forward.end.fill"
         ),
         GuideStep(
+            title: "Interval chime",
+            how: Text("\(glyph("ellipsis")) → Chime plays a soft tone every few minutes into each interval — \(glyph("bell")) shows how often. Pick the tone in Settings → Alarm."),
+            slot: running {
+                $0.intervals = [.init(name: "Focus", start: 0)]
+                $0.chimeEvery = 5 * 60
+            }
+        ),
+        GuideStep(
             title: "Stop and copy",
             how: Text("\(glyph("stop.fill")) ends the run and lists the intervals. Copy as Markdown puts them on the clipboard as a table."),
             slot: running {

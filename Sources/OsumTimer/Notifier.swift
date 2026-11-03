@@ -30,6 +30,18 @@ final class Notifier {
         postNotification(tag: tag, duration: duration)
     }
 
+    /// The interval cue. Its own sound, so it never cuts an alarm short.
+    private var cueSound: NSSound?
+
+    /// Plays an interval cue once.
+    func cue(_ named: String) {
+        guard let sound = NSSound(named: named) ?? NSSound(named: SoundCatalog.fallbackCue)
+            ?? NSSound(named: SoundCatalog.fallback) else { return }
+        cueSound?.stop()
+        cueSound = sound
+        sound.play()
+    }
+
     /// Stops a ringing alarm. Called when you deal with the timer — the point of
     /// a long ring is to reach you, not to outlast you once it has.
     func silence() {

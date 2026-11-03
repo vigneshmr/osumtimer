@@ -72,6 +72,7 @@ final class Preferences {
         static let showProgressBar = "showProgressBar"
         static let showTotal = "showTotal"
         static let rememberLastChoice = "rememberLastChoice"
+        static let cueSound = "intervalCueSound"
     }
 
     /// Opens the app when you log in. A menu bar timer you have to remember to
@@ -136,6 +137,11 @@ final class Preferences {
         didSet { defaults.set(rememberLastChoice, forKey: Key.rememberLastChoice) }
     }
 
+    /// The tone an interval chime plays. One for every timer, like the alarm.
+    var cueSound: String {
+        didSet { defaults.set(cueSound, forKey: Key.cueSound) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -160,6 +166,8 @@ final class Preferences {
             .flatMap(TimerItem.Direction.init(rawValue:)) ?? .down
         self.showProgressBar = defaults.bool(forKey: Key.showProgressBar)
         self.showTotal = defaults.bool(forKey: Key.showTotal)
+        self.cueSound = defaults.string(forKey: Key.cueSound)
+            .flatMap { NSSound(named: $0) != nil ? $0 : nil } ?? SoundCatalog.fallbackCue
         self.rememberLastChoice = defaults.object(forKey: Key.rememberLastChoice)
             as? Bool ?? true
         // On by default, so the first launch is the only one you have to do by

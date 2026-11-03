@@ -222,6 +222,18 @@ final class TimerStore {
     func toggleIntervals(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.intervals = timer.intervals == nil ? [.init(name: "", start: 0)] : nil
+        if timer.intervals != nil { slots[index].timer!.chimeEvery = nil }
+        persist()
+    }
+
+    /// Sets how often interval mode chimes, or silences it. Choosing a chime
+    /// switches interval mode on: the chime counts from the segment's start.
+    func setChime(_ id: UUID, every seconds: TimeInterval?) {
+        guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
+        if seconds != nil, slots[index].timer!.intervals == nil {
+            slots[index].timer!.intervals = [.init(name: "", start: 0)]
+        }
+        slots[index].timer!.chimeEvery = seconds
         persist()
     }
 
@@ -283,11 +295,39 @@ final class TimerStore {
             interval: 1,
             repeats: true
         ) { [weak self] _ in
-            Task { @MainActor in self?.tick = Date() }
+            Task { @MainActor in
+                self?.tick = Date()
+                self?.chime()
+            }
         }
         // .common keeps countdowns moving while a menu or resize is tracking.
         RunLoop.main.add(timer, forMode: .common)
         displayTimer = timer
+    }
+
+    /// Per slot, the segment and chime count last seen, so each chime sounds
+    /// once, on the tick its boundary is crossed.
+    private var chimeMarks: [UUID: (segment: Int, count: Int)] = [:]
+
+    /// Rides the display tick: a second late is nothing for a chime, and there
+    /// is no wake-up per boundary to keep in step with pause, resume, the next
+    /// segment and a changed interval. The first look at a segment — or after
+    /// a pause, or a jump of more than one chime, as after sleep — only takes
+    /// note, so nothing sounds for time that passed unseen.
+    private func chime() {
+        var sounded = false
+        for slot in slots {
+            guard let timer = slot.timer, let count = timer.chimesDue(at: tick) else {
+                chimeMarks[slot.id] = nil
+                continue
+            }
+            let segment = timer.intervals?.count ?? 0
+            if let mark = chimeMarks[slot.id], mark.segment == segment, count == mark.count + 1, !sounded {
+                notifier.cue(preferences.cueSound)
+                sounded = true
+            }
+            chimeMarks[slot.id] = (segment, count)
+        }
     }
 
     private func scheduleFire(_ slot: Slot) {

@@ -407,4 +407,20 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertTrue(markdown.contains("| 1 | Interval 1 | 0:30 |"), markdown)
         XCTAssertTrue(markdown.contains("a\\|b"), markdown)
     }
+
+    func testChimesCountFromTheRunningSegment() {
+        let now = Date()
+        var timer = TimerItem(duration: 1200, now: now.addingTimeInterval(-430))
+        XCTAssertNil(timer.chimesDue(at: now))
+        timer.intervals = [.init(name: "", start: 0)]
+        timer.chimeEvery = 60
+        XCTAssertEqual(timer.chimesDue(at: now), 7)
+        // A new segment starts the count again.
+        timer.intervals!.append(.init(name: "", start: 400))
+        XCTAssertEqual(timer.chimesDue(at: now), 0)
+        XCTAssertEqual(timer.chimesDue(at: now.addingTimeInterval(31)), 1)
+        // Paused or stopped, nothing is due.
+        timer.pause(at: now)
+        XCTAssertNil(timer.chimesDue(at: now))
+    }
 }

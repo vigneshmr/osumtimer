@@ -45,6 +45,7 @@ struct SettingsView: View {
     /// re-scanning the disk on every redraw would be wasteful.
     @State private var bundledSounds = SoundCatalog.bundledNames()
     @State private var systemSounds = SoundCatalog.systemNames()
+    @State private var cueSounds = SoundCatalog.cueNames()
 
     private var preview = SoundPreview.shared
 
@@ -163,6 +164,29 @@ struct SettingsView: View {
                         .accessibilityLabel(sounding ? "Stop alarm sound" : "Play alarm sound")
                     }
                 }
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Picker("Interval chime", selection: $preferences.cueSound) {
+                            ForEach(cueSounds, id: \.self) { Text(SoundCatalog.displayName($0)).tag($0) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: preferences.cueSound) { _, name in preview.play(name) }
+
+                        Button {
+                            preview.toggle(preferences.cueSound)
+                        } label: {
+                            Image(systemName: preview.playing == preferences.cueSound ? "stop.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(.borderless)
+                        .help(preview.playing == preferences.cueSound ? "Stop" : "Play")
+                        .accessibilityLabel("Play interval chime")
+                    }
+                } label: {
+                    Text("Interval chime")
+                    Text("Plays mid-run when a timer's ⋯ → Chime is set.")
+                }
                 Picker(selection: $preferences.alarmRing) {
                     ForEach(AlarmRing.allCases) { ring in
                         Text(ring.label).tag(ring)
@@ -180,7 +204,7 @@ struct SettingsView: View {
                     Button("Open") { showingGuide = true }
                 } label: {
                     Text("Guide")
-                    Text("Starting, pausing, resetting, % and Σ, in pictures.")
+                    Text("Starting, pausing, resetting, % and Σ, intervals, in pictures.")
                 }
                 Toggle(isOn: $preferences.showLabelsInMenuBar) {
                     Text("Show label in menu bar")

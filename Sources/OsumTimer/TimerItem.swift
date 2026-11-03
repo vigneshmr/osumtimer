@@ -65,6 +65,11 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// panel shows the intervals, and only reset or clear go on from here.
     var stopped: Bool = false
 
+    /// Interval mode's chime: a tone every this many seconds into the segment
+    /// running now. Starting the next segment starts the count again. nil is
+    /// silent.
+    var chimeEvery: TimeInterval?
+
     struct Interval: Codable, Equatable {
         var name: String
         var start: TimeInterval
@@ -82,7 +87,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction, showTotal
-        case intervals, stopped
+        case intervals, stopped, chimeEvery
     }
 
     /// `display`, `direction` and `showTotal` arrived after timers were already
@@ -103,6 +108,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
         showTotal = try c.decodeIfPresent(Bool.self, forKey: .showTotal) ?? false
         intervals = try c.decodeIfPresent([Interval].self, forKey: .intervals)
         stopped = try c.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
+        chimeEvery = try c.decodeIfPresent(TimeInterval.self, forKey: .chimeEvery)
     }
 
     init(
@@ -181,6 +187,14 @@ struct TimerItem: Identifiable, Codable, Equatable {
 
     /// Over, one way or the other: the buzzer went, or it was stopped.
     func isOver(at now: Date = Date()) -> Bool { stopped || hasFired(at: now) }
+
+    /// How many chimes the running segment has earned by now — 0 until the
+    /// first. nil when nothing should chime: no chime set, or not counting.
+    func chimesDue(at now: Date = Date()) -> Int? {
+        guard let every = chimeEvery, every > 0, let start = intervals?.last?.start,
+              !isPaused, !isOver(at: now) else { return nil }
+        return Int(((elapsed(at: now) - start) / every).rounded(.down))
+    }
 
     /// Each segment with its length; the last one runs to now.
     func segments(at now: Date = Date()) -> [(name: String, length: TimeInterval)] {

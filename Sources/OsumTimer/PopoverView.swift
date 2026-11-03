@@ -360,8 +360,8 @@ private struct RunningPanel: View {
                 HStack(spacing: 6) {
                     Group {
                         if isPicture {
-                            Text("Interval \(segments.count)")
-                                .foregroundStyle(Design.textFaint)
+                            Text(current.name.isEmpty ? "Interval \(segments.count)" : current.name)
+                                .foregroundStyle(current.name.isEmpty ? Design.textFaint : Design.textPrimary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
                             TextField("Interval \(segments.count)", text: nameBinding)
@@ -552,6 +552,26 @@ private struct RunningPanel: View {
         // Switching on after the run has ended has nothing left to cut up.
         intervals.isEnabled = intervalsOn || !over
         menu.addItem(intervals)
+
+        // A tone every so often into each segment; picking one turns
+        // intervals on.
+        let chime = NSMenuItem(title: "Chime", action: nil, keyEquivalent: "")
+        chime.image = NSImage(systemSymbolName: "bell", accessibilityDescription: nil)
+        chime.isEnabled = !over
+        let every = NSMenu()
+        every.autoenablesItems = false
+        every.addItem(ActionMenuItem("Off", symbol: nil, on: timer.chimeEvery == nil) {
+            store.setChime(slotID, every: nil)
+        })
+        every.addItem(.separator())
+        for minutes in [1, 2, 3, 5, 10, 15, 20, 30] {
+            let seconds = TimeInterval(minutes * 60)
+            every.addItem(ActionMenuItem("Every \(minutes) min", symbol: nil, on: timer.chimeEvery == seconds) {
+                store.setChime(slotID, every: seconds)
+            })
+        }
+        chime.submenu = every
+        menu.addItem(chime)
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
@@ -560,6 +580,15 @@ private struct RunningPanel: View {
         HStack(spacing: 4) {
             Text(word)
                 .foregroundStyle(done ? Design.accent : Design.textSecondary)
+            // The chime, so a tone mid-run is never a mystery.
+            if let every = timer.chimeEvery, !over {
+                HStack(spacing: 1) {
+                    Image(systemName: "bell")
+                    Text(Parser.echo(for: every).replacingOccurrences(of: " min", with: "m"))
+                }
+                .foregroundStyle(Design.textFaint)
+                .help("Chimes every \(Parser.echo(for: every))")
+            }
             if let tag = timer.tag {
                 Text("#\(tag)")
                     .foregroundStyle(Design.textFaint)
@@ -600,12 +629,12 @@ private struct RunningPanel: View {
 private final class ActionMenuItem: NSMenuItem {
     private let run: () -> Void
 
-    init(_ title: String, symbol: String, on: Bool, run: @escaping () -> Void) {
+    init(_ title: String, symbol: String?, on: Bool, run: @escaping () -> Void) {
         self.run = run
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
         state = on ? .on : .off
-        image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
     }
 
     required init(coder: NSCoder) { fatalError() }

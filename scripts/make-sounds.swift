@@ -184,7 +184,7 @@ func reverb(_ track: Track, room: Double, damping: Double, wet: Double, predelay
 /// would leave them all much softer than the system sounds; instead the
 /// loudest half second is brought to a common RMS, with the peak kept clear of
 /// clipping.
-func finish(_ track: Track, fade: Double = 0.6) {
+func finish(_ track: Track, fade: Double = 0.6, level: Double = 0.07) {
     // Cut the tail once it is 30 dB under the loudest moment, plus a short fade.
     // Past that it is a faint tail an alarm can lose, and since the alarm loops the
     // file, every second of near-silence is a second of gap between strikes.
@@ -223,7 +223,7 @@ func finish(_ track: Track, fade: Double = 0.6) {
         peak = max(peak, abs(track.left[i]), abs(track.right[i]))
     }
     let rms = (loudest / Double(window)).squareRoot()
-    let gain = min(0.07 / rms, 0.93 / peak)
+    let gain = min(level / rms, 0.93 / peak)
     for i in 0..<track.count {
         track.left[i] *= gain
         track.right[i] *= gain
@@ -448,6 +448,81 @@ func harp() -> Track {
     return track
 }
 
+// MARK: - Interval cues
+//
+// Played mid-run, every few minutes, while you are working — so the brief is
+// narrower than an alarm's: short, mild, and done in a second or two. A cue
+// says "a stretch has passed", not "stop". Quieter than the alarms (level),
+// higher and cleaner, with a soft attack and a small room.
+
+/// A single tap on a thin glass: nearly a pure tone, a faint shimmer.
+func cueGlass() -> Track {
+    let track = Track(seconds: 2.5)
+    strike(track, at: 0.01, fundamental: 1046.5, modes: [
+        Mode(ratio: 1.00, amp: 1.00, t60: 1.5, beat: 1.1, spread: 0.25),
+        Mode(ratio: 2.32, amp: 0.07, t60: 0.45),
+        Mode(ratio: 4.25, amp: 0.025, t60: 0.15),
+    ], attack: 0.004)
+    reverb(track, room: 0.5, damping: 0.5, wet: 0.22)
+    finish(track, fade: 0.4, level: 0.035)
+    return track
+}
+
+/// Two felt-mallet notes rising a fourth — E5 to A5 — the shape of "onward".
+func cueLift() -> Track {
+    let track = Track(seconds: 2.2)
+    let bar = [
+        Mode(ratio: 1.00, amp: 1.00, t60: 0.9),
+        Mode(ratio: 3.99, amp: 0.10, t60: 0.2),
+    ]
+    strike(track, at: 0.01, fundamental: 659.26, modes: bar, velocity: 0.75, pan: -0.15, attack: 0.006)
+    strike(track, at: 0.17, fundamental: 880.0, modes: bar, velocity: 0.9, pan: 0.15, attack: 0.006)
+    reverb(track, room: 0.45, damping: 0.55, wet: 0.2)
+    finish(track, fade: 0.4, level: 0.035)
+    return track
+}
+
+/// Two soft sine pulses on one pitch, a breath apart — the clean, modern
+/// "noted" of a device that does not want to interrupt.
+func cuePulse() -> Track {
+    let track = Track(seconds: 1.8)
+    for (onset, velocity) in [(0.01, 0.8), (0.16, 1.0)] {
+        track.add(at: onset, length: 0.8) { t in
+            velocity * ramp(t, over: 0.008) * exp(-t / 0.11)
+                * (sin(twoPi * 784 * t) + 0.04 * sin(twoPi * 1568 * t))
+        }
+    }
+    reverb(track, room: 0.4, damping: 0.6, wet: 0.18)
+    finish(track, fade: 0.3, level: 0.035)
+    return track
+}
+
+/// A small wooden block, lightly knocked: a warm click with almost no ring.
+func cueWood() -> Track {
+    let track = Track(seconds: 1.5)
+    strike(track, at: 0.01, fundamental: 587.33, modes: [
+        Mode(ratio: 1.00, amp: 1.00, t60: 0.32),
+        Mode(ratio: 2.57, amp: 0.30, t60: 0.12),
+        Mode(ratio: 4.10, amp: 0.10, t60: 0.06),
+    ], attack: 0.0015)
+    reverb(track, room: 0.35, damping: 0.6, wet: 0.2)
+    finish(track, fade: 0.25, level: 0.035)
+    return track
+}
+
+/// A small crystal bowl touched rather than struck: a bloom that swells in
+/// and fades, with no edge at all.
+func cueBloom() -> Track {
+    let track = Track(seconds: 3)
+    strike(track, at: 0.01, fundamental: 523.25, modes: [
+        Mode(ratio: 1.00, amp: 1.00, t60: 2.2, beat: 0.8, spread: 0.4),
+        Mode(ratio: 2.92, amp: 0.04, t60: 0.8),
+    ], attack: 0.06)
+    reverb(track, room: 0.6, damping: 0.5, wet: 0.28)
+    finish(track, fade: 0.5, level: 0.035)
+    return track
+}
+
 // MARK: - Main
 
 // Names avoid the fourteen in /System/Library/Sounds: the app bundle is
@@ -456,6 +531,9 @@ let sounds: [(String, () -> Track)] = [
     ("Bowl", bowl), ("Chimes", chimes), ("Crystal", crystal), ("Droplet", droplet),
     ("Harp", harp), ("Kalimba", kalimba), ("Marimba", marimba), ("Temple", temple),
     ("Velvet", velvet),
+    // "Cue-" marks the interval cues, which the app lists apart from alarms.
+    ("Cue-Bloom", cueBloom), ("Cue-Glass", cueGlass), ("Cue-Lift", cueLift),
+    ("Cue-Pulse", cuePulse), ("Cue-Wood", cueWood),
 ]
 
 guard CommandLine.arguments.count == 2 else {

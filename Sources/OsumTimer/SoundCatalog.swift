@@ -23,15 +23,35 @@ enum SoundCatalog {
 
     private static let playable: Set<String> = ["aiff", "aif", "wav", "m4a", "caf", "mp3"]
 
-    /// The app's own sounds, alphabetical. Empty under `swift run`, which has
-    /// no bundle to carry them.
+    /// Bundled sounds named this way are interval cues, not alarms.
+    static let cuePrefix = "Cue-"
+    static let fallbackCue = "Cue-Glass"
+
+    /// The app's own alarm sounds, alphabetical. Empty under `swift run`,
+    /// which has no bundle to carry them.
     static func bundledNames() -> [String] {
+        allBundled().filter { !$0.hasPrefix(cuePrefix) }
+    }
+
+    /// The short, mild tones played between intervals, alphabetical. Under
+    /// `swift run`, with no bundle, a few quiet system sounds stand in.
+    static func cueNames() -> [String] {
+        let cues = allBundled().filter { $0.hasPrefix(cuePrefix) }
+        return cues.isEmpty ? ["Pop", "Tink", "Morse"].filter { NSSound(named: $0) != nil } : cues
+    }
+
+    /// What a sound is called on screen: a cue without its prefix.
+    static func displayName(_ name: String) -> String {
+        name.hasPrefix(cuePrefix) ? String(name.dropFirst(cuePrefix.count)) : name
+    }
+
+    private static func allBundled() -> [String] {
         names(in: [Bundle.main.resourcePath].compactMap { $0 })
     }
 
     /// The system's sounds, alphabetical, minus any the bundle shadows.
     static func systemNames() -> [String] {
-        let bundled = Set(bundledNames())
+        let bundled = Set(allBundled())
         return names(in: systemDirectories).filter { !bundled.contains($0) }
     }
 

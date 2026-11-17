@@ -120,10 +120,6 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
-                Toggle(isOn: $preferences.rememberLastChoice) {
-                    Text("Remember last choice")
-                    Text("Flipping %, Σ or the arrow on any timer updates these, for new timers and any you reset.")
-                }
             } header: {
                 sectionHeader("New timers")
             }

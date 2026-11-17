@@ -316,8 +316,9 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertFalse(timer.showTotal)
     }
 
-    /// Flipping a timer's display makes that the default for the next timer.
-    func testTogglesBecomeTheDefaultForNewTimers() {
+    /// ⋯ choices stay with their timer: through reset, through a new
+    /// duration typed into the same item, through clear — never to a new item.
+    func testOptionsStayWithTheirSlot() {
         let preferences = scratchPreferences()
         let loaded = store(Snapshot(slots: []), preferences: preferences)
         let first = loaded.slots[0].id
@@ -325,41 +326,42 @@ final class TimerStoreTests: XCTestCase {
         loaded.toggleDisplay(first)
         loaded.toggleShowTotal(first)
         loaded.toggleDirection(first)
+        loaded.setChime(first, every: 300)
+        let options = loaded.slot(first)!.timer!.options
+
+        XCTAssertFalse(preferences.showTotal)
+        XCTAssertEqual(preferences.direction, .down)
+
+        loaded.restart(first)
+        XCTAssertEqual(loaded.slot(first)!.timer!.options, options)
+
+        loaded.start(first, with: try! Parser.parse("5m").get())
+        XCTAssertEqual(loaded.slot(first)!.timer!.options, options)
+        XCTAssertEqual(loaded.slot(first)!.timer!.intervals, [.init(name: "", start: 0)])
+
+        loaded.clear(first)
+        loaded.start(first, with: try! Parser.parse("5m").get())
+        XCTAssertEqual(loaded.slot(first)!.timer!.options, options)
 
         let next = loaded.addSlot()
         loaded.start(next, with: try! Parser.parse("5m").get())
-        let timer = loaded.slot(next)!.timer!
-        XCTAssertEqual(timer.display, .percent)
-        XCTAssertTrue(timer.showTotal)
-        XCTAssertEqual(timer.direction, .up)
+        let fresh = loaded.slot(next)!.timer!
+        XCTAssertEqual(fresh.display, .clock)
+        XCTAssertFalse(fresh.showTotal)
+        XCTAssertNil(fresh.intervals)
+        XCTAssertNil(fresh.chimeEvery)
     }
 
-    /// A reset timer picks up choices made on other timers since it started.
-    func testRestartAdoptsRememberedChoices() {
-        let preferences = scratchPreferences()
-        let loaded = store(Snapshot(slots: []), preferences: preferences)
-        let old = loaded.slots[0].id
-        loaded.start(old, with: try! Parser.parse("15m").get())
-        let other = loaded.addSlot()
-        loaded.start(other, with: try! Parser.parse("5m").get())
-        loaded.toggleShowTotal(other)
-
-        loaded.restart(old)
-        XCTAssertTrue(loaded.slot(old)!.timer!.showTotal)
-    }
-
-    /// With remembering off, a toggle stays with its own timer.
-    func testTogglesStayPutWhenRememberingIsOff() {
-        let preferences = scratchPreferences()
-        preferences.rememberLastChoice = false
-        let loaded = store(Snapshot(slots: []), preferences: preferences)
-        let first = loaded.slots[0].id
-        loaded.start(first, with: try! Parser.parse("15m").get())
-        loaded.toggleShowTotal(first)
-
-        XCTAssertFalse(preferences.showTotal)
-        loaded.restart(first)
-        XCTAssertTrue(loaded.slot(first)!.timer!.showTotal)
+    /// A time-of-day timer resets to its words; its choices wait in the slot.
+    func testOptionsSurviveResetToDraft() {
+        let loaded = store(Snapshot(slots: []))
+        let id = loaded.slots[0].id
+        loaded.start(id, with: try! Parser.parse("@11:59pm").get())
+        loaded.toggleShowTotal(id)
+        loaded.restart(id)
+        XCTAssertNil(loaded.slot(id)!.timer)
+        loaded.start(id, with: try! Parser.parse(loaded.slot(id)!.draft).get())
+        XCTAssertTrue(loaded.slot(id)!.timer!.showTotal)
     }
 
     // MARK: - Intervals

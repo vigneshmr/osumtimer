@@ -12,6 +12,11 @@ struct Slot: Identifiable, Codable, Equatable {
     /// because the popover rebuilds its content every time it opens — anything
     /// kept in view state is lost the moment you click away.
     var draft: String = ""
+    /// The ⋯ choices of the last timer this slot held, kept while it holds
+    /// none — cleared, or reset back to its words — so the next timer typed
+    /// here picks up where that one left off. They belong to this item, never
+    /// to new ones.
+    var options: TimerItem.Options?
 
     init(id: UUID = UUID(), timer: TimerItem? = nil, draft: String = "") {
         self.id = id
@@ -69,6 +74,28 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// running now. Starting the next segment starts the count again. nil is
     /// silent.
     var chimeEvery: TimeInterval?
+
+    /// Everything set from the ⋯ menu: how the timer reads, and interval
+    /// mode. Carried across reset and across a new duration in the same slot.
+    struct Options: Codable, Equatable {
+        var display: DisplayMode
+        var direction: Direction
+        var showTotal: Bool
+        var intervals: Bool
+        var chimeEvery: TimeInterval?
+    }
+
+    var options: Options {
+        get { Options(display: display, direction: direction, showTotal: showTotal,
+                      intervals: intervals != nil, chimeEvery: chimeEvery) }
+        set {
+            display = newValue.display
+            direction = newValue.direction
+            showTotal = newValue.showTotal
+            intervals = newValue.intervals ? (intervals ?? [Interval(name: "", start: 0)]) : nil
+            chimeEvery = newValue.intervals ? newValue.chimeEvery : nil
+        }
+    }
 
     struct Interval: Codable, Equatable {
         var name: String

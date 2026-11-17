@@ -71,7 +71,6 @@ final class Preferences {
         static let direction = "countDirection"
         static let showProgressBar = "showProgressBar"
         static let showTotal = "showTotal"
-        static let rememberLastChoice = "rememberLastChoice"
         static let cueSound = "intervalCueSound"
     }
 
@@ -130,13 +129,6 @@ final class Preferences {
         didSet { defaults.set(showTotal, forKey: Key.showTotal) }
     }
 
-    /// Flipping % , Σ or the arrow on any timer also makes that the default
-    /// for the next one — and for any timer reset after it. On by default: the
-    /// last choice you made is the best guess at the next one.
-    var rememberLastChoice: Bool {
-        didSet { defaults.set(rememberLastChoice, forKey: Key.rememberLastChoice) }
-    }
-
     /// The tone an interval chime plays. One for every timer, like the alarm.
     var cueSound: String {
         didSet { defaults.set(cueSound, forKey: Key.cueSound) }
@@ -168,8 +160,6 @@ final class Preferences {
         self.showTotal = defaults.bool(forKey: Key.showTotal)
         self.cueSound = defaults.string(forKey: Key.cueSound)
             .flatMap { NSSound(named: $0) != nil ? $0 : nil } ?? SoundCatalog.fallbackCue
-        self.rememberLastChoice = defaults.object(forKey: Key.rememberLastChoice)
-            as? Bool ?? true
         // On by default, so the first launch is the only one you have to do by
         // hand — but never re-registering behind the back of someone who turned
         // it off, here or in System Settings.

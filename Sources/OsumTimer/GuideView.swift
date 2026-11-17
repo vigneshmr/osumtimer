@@ -183,8 +183,8 @@ enum GuidePictures {
     }
 
     static func render(_ scheme: ColorScheme) -> [NSImage?] {
-        // Scratch everything, so a picture never touches real timers — nor,
-        // through `rememberLastChoice`, the real defaults. The timers go in
+        // Scratch everything, so a picture never touches real timers — nor
+        // the real defaults. The timers go in
         // through the file, the only way to hand the store one already partway
         // through. Drafts are added after: loading drops them when timers exist.
         let steps = GuideStep.all

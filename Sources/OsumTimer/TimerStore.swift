@@ -57,7 +57,10 @@ final class TimerStore {
         // drop its countdown, so the app never alarms about yesterday on launch.
         self.slots = deduped.map { slot in
             var slot = slot
-            if let timer = slot.timer, timer.hasFired() { slot.timer = nil }
+            if let timer = slot.timer, timer.hasFired() {
+                slot.options = timer.options
+                slot.timer = nil
+            }
             return slot
         }
         self.recents = snapshot.recents
@@ -103,12 +106,18 @@ final class TimerStore {
     func start(_ id: UUID, with parsed: ParsedTimer) {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
         hush()
-        slots[index].timer = TimerItem(
+        // A timer typed over one in this slot — or into a slot that held one —
+        // keeps its ⋯ choices; only a brand-new item starts from settings.
+        let kept = slots[index].timer?.options ?? slots[index].options
+        var timer = TimerItem(
             duration: parsed.duration, tag: parsed.tag, target: parsed.target, input: parsed.input,
             display: preferences.showProgressBar ? .percent : .clock,
             direction: preferences.direction,
             showTotal: preferences.showTotal
         )
+        if let kept { timer.options = kept }
+        slots[index].timer = timer
+        slots[index].options = nil
         catchUp()
         rememberRecent(parsed.expression)
         scheduleFire(slots[index])
@@ -125,7 +134,9 @@ final class TimerStore {
         cancelFire(id)
         hush()
         if slots.count == 1, slots[0].id == id {
+            // Removed, not cleared: what is left is a new item.
             slots[0].timer = nil
+            slots[0].options = nil
             persist()
             return
         }
@@ -138,6 +149,7 @@ final class TimerStore {
     func clear(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }) else { return }
         cancelFire(id)
+        slots[index].options = slots[index].timer?.options
         slots[index].timer = nil
         hush()
         persist()
@@ -173,17 +185,12 @@ final class TimerStore {
         hush()
 
         if timer.target != nil, let input = timer.input, !input.isEmpty {
+            slots[index].options = timer.options
             slots[index].timer = nil
             slots[index].draft = input
         } else {
+            // Keeps its own ⋯ choices: it is the same timer, rewound.
             slots[index].timer!.restart()
-            // A reset timer is a reused one, so it picks up the latest choices
-            // the same way a new one would.
-            if preferences.rememberLastChoice {
-                slots[index].timer!.display = preferences.showProgressBar ? .percent : .clock
-                slots[index].timer!.direction = preferences.direction
-                slots[index].timer!.showTotal = preferences.showTotal
-            }
         }
         persist()
     }
@@ -193,9 +200,6 @@ final class TimerStore {
     func toggleDisplay(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.display = timer.display == .clock ? .percent : .clock
-        if preferences.rememberLastChoice {
-            preferences.showProgressBar = slots[index].timer!.display == .percent
-        }
         persist()
     }
 
@@ -204,7 +208,6 @@ final class TimerStore {
     func toggleDirection(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), let timer = slots[index].timer else { return }
         slots[index].timer!.direction = timer.direction == .down ? .up : .down
-        if preferences.rememberLastChoice { preferences.direction = slots[index].timer!.direction }
         persist()
     }
 
@@ -213,7 +216,6 @@ final class TimerStore {
     func toggleShowTotal(_ id: UUID) {
         guard let index = slots.firstIndex(where: { $0.id == id }), slots[index].timer != nil else { return }
         slots[index].timer!.showTotal.toggle()
-        if preferences.rememberLastChoice { preferences.showTotal = slots[index].timer!.showTotal }
         persist()
     }
 

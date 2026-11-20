@@ -518,7 +518,15 @@ private struct RunningPanel: View {
                         }
                     }
                 }
-                // How the timer reads — %, Σ, direction — and interval mode.
+                // Counting up is flipped mid-run often enough to sit out here.
+                // The arrow shows the way the clock runs now; pressing flips it.
+                GlyphButton(symbol: timer.direction == .up ? "arrow.up" : "arrow.down",
+                            help: timer.direction == .up ? "Counting up — switch to down"
+                                                         : "Counting down — switch to up",
+                            size: 28) {
+                    store.toggleDirection(slotID)
+                }
+                // How the timer reads — % and Σ — and interval mode.
                 // Set once and left, so they sit a click away rather than
                 // beside the controls used every time.
                 GlyphButton(symbol: "ellipsis", help: "More", size: 28) {
@@ -541,9 +549,6 @@ private struct RunningPanel: View {
         })
         menu.addItem(ActionMenuItem("Show total", symbol: "sum", on: timer.showTotal) {
             store.toggleShowTotal(slotID)
-        })
-        menu.addItem(ActionMenuItem("Count up", symbol: "arrow.up", on: timer.direction == .up) {
-            store.toggleDirection(slotID)
         })
         menu.addItem(.separator())
         let intervals = ActionMenuItem("Intervals", symbol: "flag", on: intervalsOn) {

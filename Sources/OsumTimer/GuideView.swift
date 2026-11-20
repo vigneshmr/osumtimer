@@ -134,6 +134,12 @@ private struct GuideStep {
             pointing: "arrow.clockwise"
         ),
         GuideStep(
+            title: "Count up or down",
+            how: Text("\(glyph("arrow.down")) means counting down. Press it to count up — \(glyph("arrow.up")) shows the time gone instead of the time left. Press again to flip back."),
+            slot: running { $0.direction = .up },
+            pointing: "arrow.up"
+        ),
+        GuideStep(
             title: "Show percentage",
             how: Text("\(glyph("ellipsis")) → Progress bar reads the timer as how far along it is, with a bar, in the panel and the menu bar. The clock moves to the line below."),
             slot: running { $0.display = .percent }

@@ -21,9 +21,9 @@ enum Design {
     static let radius: CGFloat = 10
     static let radiusSmall: CGFloat = 7
     static let gutter: CGFloat = 14
-    // Sized to the control row (5 × 28 + gaps) plus gutters — the panel is as
+    // Sized to the widest control row (6 × 28 + gaps) plus gutters — the panel is as
     // wide as its widest content needs and no wider.
-    static let popoverWidth: CGFloat = 224
+    static let popoverWidth: CGFloat = 232
 
     // Type — one family, four sizes. Numerals are always monospaced so digits
     // never reflow while counting down.

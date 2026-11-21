@@ -8,9 +8,10 @@ import ServiceManagement
 /// launchd to register, so every call is a no-op rather than an error the user
 /// would have no way to act on.
 enum LoginItem {
-    /// False under `swift run`, where there is no `.app` to register — the
-    /// setting is not "off" there so much as not a thing that can be asked for.
-    static var isSupported: Bool { Bundle.main.bundleIdentifier != nil }
+    /// False under `swift run` and under `swift test`, where there is no `.app`
+    /// to register. The test runner `xctest` has a bundle identifier of its own,
+    /// so checking for one would register `xctest` itself to open at login.
+    static var isSupported: Bool { Bundle.main.bundleURL.pathExtension == "app" }
 
     static var isEnabled: Bool {
         guard isSupported else { return false }

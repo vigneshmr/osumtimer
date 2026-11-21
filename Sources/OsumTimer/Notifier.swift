@@ -25,9 +25,13 @@ final class Notifier {
 
     /// `named` is the alarm tone and `ringFor` how long it keeps sounding; the
     /// caller reads both from preferences, keeping this type unaware of settings.
-    func fire(tag: String?, duration: TimeInterval, sound named: String, ringFor seconds: TimeInterval) {
-        playSound(named, ringFor: seconds)
+    /// Returns how long the sound will actually play — the tone's own length
+    /// when it plays once — so the menu bar can flash for exactly that long.
+    @discardableResult
+    func fire(tag: String?, duration: TimeInterval, sound named: String, ringFor seconds: TimeInterval) -> TimeInterval {
+        let playing = playSound(named, ringFor: seconds)
         postNotification(tag: tag, duration: duration)
+        return playing
     }
 
     /// The interval cue. Its own sound, so it never cuts an alarm short.
@@ -51,11 +55,12 @@ final class Notifier {
         sound = nil
     }
 
-    private func playSound(_ named: String, ringFor seconds: TimeInterval) {
+    private func playSound(_ named: String, ringFor seconds: TimeInterval) -> TimeInterval {
         // Resolved per alarm, not once at init: the preference can change, and a
         // sound the user has since deleted must still leave us with a beep.
         guard let sound = NSSound(named: named) ?? NSSound(named: SoundCatalog.fallback) else {
-            return NSSound.beep()
+            NSSound.beep()
+            return 1
         }
         silence()
 
@@ -66,7 +71,7 @@ final class Notifier {
         self.sound = sound
         sound.play()
 
-        guard seconds > 0 else { return }
+        guard seconds > 0 else { return sound.duration }
         let work = DispatchWorkItem { [weak self] in
             self?.sound?.stop()
             self?.sound = nil
@@ -74,6 +79,7 @@ final class Notifier {
         }
         stopWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        return seconds
     }
 
     private func postNotification(tag: String?, duration: TimeInterval) {

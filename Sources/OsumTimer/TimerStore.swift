@@ -355,13 +355,15 @@ final class TimerStore {
     private func fire(_ id: UUID) {
         guard let timer = slot(id)?.timer else { return }
         cancelFire(id)
-        notifier.fire(
+        let playing = notifier.fire(
             tag: timer.tag,
             duration: timer.duration,
             sound: preferences.alarmSound,
             ringFor: preferences.alarmRing.seconds
         )
-        startRinging(id, for: preferences.alarmRing.seconds)
+        // The menu bar goes dark for as long as the sound plays — a tone played
+        // once included — and stops with it.
+        startRinging(id, for: playing)
         // A chain goes straight on to its next step while the alarm rings:
         // the next step's clock is not held up by you getting to the first.
         if timer.hasNextStep, let index = slots.firstIndex(where: { $0.id == id }) {

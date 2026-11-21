@@ -60,4 +60,28 @@ final class MenuBarTitleTests: XCTestCase {
     func testFullWidthTitleIsLeftAlone() {
         XCTAssertEqual(StatusItemController.padded("10:00", to: "10:00"), "10:00")
     }
+
+    func testAChainShowsWhereItIs() {
+        let now = Date(timeIntervalSinceReferenceDate: 1000)
+        var timer = TimerItem(duration: 10, now: now)
+        timer.chain = [10]
+        timer.repeats = true
+        timer.advance()
+        timer.advance()
+        timer.advance()
+        timer.advance()
+        XCTAssertTrue(StatusItemController.title(for: timer, at: now).hasSuffix(" ↻5"))
+
+        var once = TimerItem(duration: 10, now: now)
+        once.chain = [10, 20, 30]
+        XCTAssertEqual(StatusItemController.title(for: once, at: now), "0:10")
+
+        var steps = TimerItem(duration: 10, now: now)
+        steps.chain = [10, 20]
+        steps.repeats = true
+        steps.advance()
+        XCTAssertTrue(StatusItemController.title(for: steps, at: now).hasSuffix(" ↻1"))
+
+        XCTAssertFalse(StatusItemController.title(for: TimerItem(duration: 10, now: now), at: now).contains("↻"))
+    }
 }

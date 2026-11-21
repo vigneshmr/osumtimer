@@ -21,10 +21,7 @@ final class StatusItemController {
     private var slotsByButton: [ObjectIdentifier: UUID] = [:]
     private let panel = PanelWindow()
     private var openSlot: UUID?
-    /// Drives the flash of a ringing item; nil whenever nothing is ringing.
-    private var pulseTimer: Foundation.Timer?
-    private var pulseOn = false
-    /// Items currently flashing, so each can be put back exactly once.
+    /// Items currently drawn ringing, so each can be put back exactly once.
     private var pulsing: Set<UUID> = []
 
     init(store: TimerStore) {
@@ -96,7 +93,10 @@ final class StatusItemController {
         let live = Set(slots.map(\.id))
 
         for (id, item) in items where !live.contains(id) {
-            if let button = item.button { slotsByButton.removeValue(forKey: ObjectIdentifier(button)) }
+            if let button = item.button {
+                slotsByButton.removeValue(forKey: ObjectIdentifier(button))
+                RingLook.remove(from: button)  // forgets it, so a reused identity starts clean
+            }
             NSStatusBar.system.removeStatusItem(item)
             items.removeValue(forKey: id)
             titles.removeValue(forKey: id)
@@ -111,44 +111,20 @@ final class StatusItemController {
 
     // MARK: - Pulse
 
-    /// While a timer's alarm is sounding, its item flashes between normal and
-    /// highlighted — which is how the menu bar draws a clicked item, so AppKit
-    /// inverts the text with the background and it stays readable in either
-    /// appearance and against whatever is behind the bar.
+    /// While a timer's alarm is sounding, its item turns into a dark pill with
+    /// white text. Fixed colours, not the
+    /// system's click highlight: that highlight is a faint tint on recent macOS,
+    /// easy to miss against a busy wallpaper, while white on near-black reads
+    /// the same in either appearance and over anything behind the bar.
     private func syncPulse() {
         let ringing = store.ringing
-
-        guard !ringing.isEmpty else {
-            pulseTimer?.invalidate()
-            pulseTimer = nil
-            for id in pulsing { items[id]?.button?.highlight(false) }
-            pulsing = []
-            pulseOn = false
-            return
+        for id in pulsing.subtracting(ringing) {
+            if let button = items[id]?.button { RingLook.remove(from: button) }
         }
-
-        // An item that stops ringing while another still is has to be let go of
-        // individually; the whole pulse is torn down above only once all are done.
-        for id in pulsing.subtracting(ringing) { items[id]?.button?.highlight(false) }
         pulsing = ringing
-        apply(pulseOn)
-
-        guard pulseTimer == nil else { return }
-        let timer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.pulseOn.toggle()
-                self.apply(self.pulseOn)
-            }
+        for id in ringing {
+            if let button = items[id]?.button { RingLook.apply(to: button) }
         }
-        // .common so the flash keeps going while a menu is tracking — the moment
-        // you are most likely to be looking at the menu bar.
-        RunLoop.main.add(timer, forMode: .common)
-        pulseTimer = timer
-    }
-
-    private func apply(_ on: Bool) {
-        for id in pulsing { items[id]?.button?.highlight(on) }
     }
 
     private func update(_ slot: Slot) {
@@ -227,14 +203,18 @@ final class StatusItemController {
     /// that is, so the clock rides along in brackets: "98% (15:11)", or
     /// "98% (15:11 / 25:00)". Without percent, the clock alone: "15:11", or
     /// "15:11 / 25:00".
+    ///
+    /// A repeating chain adds which round it is on: "15:11 ↻5". Which step
+    /// of the round is not worth the menu bar width.
     static func title(for timer: TimerItem, at now: Date) -> String {
-        if timer.display == .percent {
-            return padded(
+        let clock = timer.display == .percent
+            ? padded(
                 "\(timer.percentElapsed(at: now))% (\(timer.clock(timer.clockValue(at: now))))",
                 to: "100% (\(timer.clock(timer.duration)))"
             )
-        }
-        return padded(timer.clock(timer.clockValue(at: now)), to: timer.clock(timer.duration))
+            : padded(timer.clock(timer.clockValue(at: now)), to: timer.clock(timer.duration))
+        guard timer.repeats, !timer.stopped else { return clock }
+        return "\(clock) ↻\(timer.round)"
     }
 
     /// Pads a countdown out to the width of the longest string this timer will
@@ -354,6 +334,74 @@ final class StatusItemController {
         ) { [weak self] in
             self?.openSlot = nil
         }
+    }
+}
+
+/// The ringing look on a status item button: white on near-black. The dark
+/// fades in when the alarm starts and out when it stops, rather than snapping.
+@MainActor
+private enum RingLook {
+    private static let dark = NSColor(white: 0.08, alpha: 0.92).cgColor
+    private static let clear = NSColor(white: 0.08, alpha: 0).cgColor
+    private static let fadeIn: CFTimeInterval = 0.5
+    private static let fadeOut: CFTimeInterval = 0.7
+
+    /// Buttons dark now, not counting ones fading out.
+    private static var active: Set<ObjectIdentifier> = []
+    /// Bumped on every start and stop, so a fade-out that finishes after the
+    /// alarm has started again does not undo the new one.
+    private static var generation: [ObjectIdentifier: Int] = [:]
+
+    /// Called on every tick while ringing; only the first call does anything.
+    static func apply(to button: NSStatusBarButton) {
+        let key = ObjectIdentifier(button)
+        guard !active.contains(key) else { return }
+        button.wantsLayer = true
+        guard let layer = button.layer else { return }
+        active.insert(key)
+        generation[key, default: 0] += 1
+        // A dark appearance turns the plain title and the template bar white,
+        // with no hardcoded colour to forget to undo.
+        button.appearance = NSAppearance(named: .darkAqua)
+        layer.cornerRadius = 6
+        // The layer's own background draws beneath the title; a sublayer would
+        // cover it.
+        fade(layer, to: dark, over: fadeIn)
+    }
+
+    static func remove(from button: NSStatusBarButton) {
+        let key = ObjectIdentifier(button)
+        guard active.remove(key) != nil, let layer = button.layer else { return }
+        generation[key, default: 0] += 1
+        let mine = generation[key]
+
+        fade(layer, to: clear, over: fadeOut)
+        // The text goes back to the bar's own colour halfway, once the dark
+        // behind it is mostly gone — white on a light bar would vanish.
+        DispatchQueue.main.asyncAfter(deadline: .now() + fadeOut / 2) {
+            guard generation[key] == mine else { return }
+            button.appearance = nil
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + fadeOut) {
+            guard generation[key] == mine else { return }
+            layer.backgroundColor = nil
+            layer.cornerRadius = 0
+        }
+    }
+
+    /// Animates from wherever the background is on screen now — partway
+    /// through an opposite fade included — to `color`, and leaves it there.
+    private static func fade(_ layer: CALayer, to color: CGColor, over duration: CFTimeInterval) {
+        let animation = CABasicAnimation(keyPath: "backgroundColor")
+        animation.fromValue = layer.presentation()?.backgroundColor ?? layer.backgroundColor ?? clear
+        animation.toValue = color
+        animation.duration = duration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.backgroundColor = color
+        CATransaction.commit()
+        layer.add(animation, forKey: "osum.fade")
     }
 }
 

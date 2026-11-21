@@ -71,6 +71,26 @@ final class TimerStoreTests: XCTestCase {
         XCTAssertNil(loaded.slots[0].timer)
     }
 
+    /// A chain whose first step rang while the app was closed is still going:
+    /// it relaunches on the step that is running now, not as a stale timer.
+    func testChainRelaunchesOnTheStepRunningNow() {
+        var timer = TimerItem(duration: 60, now: Date(timeIntervalSinceNow: -90))
+        timer.chain = [60, 60]
+        let loaded = store(Snapshot(slots: [Slot(timer: timer)]))
+
+        XCTAssertEqual(loaded.slots[0].timer?.step, 1)
+        XCTAssertFalse(loaded.slots[0].timer?.hasFired() ?? true)
+    }
+
+    func testStartingAChainCarriesItsSteps() {
+        let loaded = store(Snapshot(slots: [Slot()]))
+        let id = loaded.slots[0].id
+        loaded.start(id, with: try! Parser.parse("12m,repeat").get())
+
+        XCTAssertEqual(loaded.slots[0].timer?.chain, [720])
+        XCTAssertEqual(loaded.slots[0].timer?.repeats, true)
+    }
+
     /// Timers started at any sub-second phase share one rollover boundary, so
     /// their menu bar digits change together.
     func testEndDatesSnapToWholeSeconds() {

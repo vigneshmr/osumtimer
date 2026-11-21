@@ -28,6 +28,8 @@ Requires macOS 14+.
 | `1:30` · `1:30:45` | stopwatch-style |
 | `@5pm` · `until 14:00` | ends at that time |
 | `#deepwork 25` | 25 minutes, labelled **deepwork** |
+| `12m,12m` | 12 minutes, then another 12 straight after |
+| `25m,5m,repeat` | 25, 5, 25, 5… until you stop it |
 
 <img src="docs/panel.png" alt="The timer panel" width="440">
 

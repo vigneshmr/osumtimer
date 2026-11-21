@@ -17,6 +17,12 @@ struct ParsedTimer: Equatable {
     /// This is what recents keep, so reusing one re-resolves it instead of
     /// replaying whatever length it worked out to the first time.
     var expression: String = ""
+    /// A chain — "12m,12m" or "12m,repeat": every step's length, in order,
+    /// `duration` being the first. nil for a single timer. Each step starts
+    /// the moment the one before it rings.
+    var chain: [TimeInterval]? = nil
+    /// The chain goes back to its first step after the last, for ever.
+    var repeats: Bool = false
 }
 
 /// A time of day, meaning its next occurrence — "@5pm" at 6pm means tomorrow.
@@ -86,6 +92,10 @@ enum Parser {
         text = text.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return .failure(.unrecognized) }
 
+        if text.contains(",") || text == "repeat" {
+            return chain(text, tag: tag, raw: raw, now: now, calendar: calendar)
+        }
+
         let target = absoluteTarget(text)
         let duration: TimeInterval? =
             target?.interval(from: now, calendar: calendar)
@@ -104,6 +114,44 @@ enum Parser {
             target: target,
             input: raw.trimmingCharacters(in: .whitespacesAndNewlines),
             expression: text
+        ))
+    }
+
+    /// `12m,12m` — steps run back to back; `12m,repeat` — for ever. A trailing
+    /// comma is allowed, and `repeat` only as the last word. A time of day
+    /// cannot be a step: by the time the step before it rings, "@5pm" may
+    /// already be tomorrow.
+    private static func chain(_ text: String, tag: String?, raw: String, now: Date, calendar: Calendar) -> Result<ParsedTimer, ParseError> {
+        var pieces = text.split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        if pieces.last == "" { pieces.removeLast() }
+        let repeats = pieces.last == "repeat"
+        if repeats { pieces.removeLast() }
+        guard !pieces.isEmpty else { return .failure(.unrecognized) }
+
+        var steps: [TimeInterval] = []
+        for piece in pieces {
+            guard !piece.isEmpty, absoluteTarget(piece) == nil else { return .failure(.unrecognized) }
+            guard let duration = colonForm(piece) ?? unitForm(piece) ?? bareMinutes(piece) else {
+                return .failure(.unrecognized)
+            }
+            guard duration > 0 else { return .failure(.notPositive) }
+            guard duration <= maxDuration else { return .failure(.tooLong) }
+            steps.append(duration)
+        }
+
+        let single = steps.count == 1 && !repeats
+        var echo = steps.map { echo(for: $0) }.joined(separator: " → ")
+        if repeats { echo += steps.count == 1 ? ", repeating" : " → repeat" }
+        return .success(ParsedTimer(
+            duration: steps[0],
+            tag: tag,
+            echo: echo,
+            target: nil,
+            input: raw.trimmingCharacters(in: .whitespacesAndNewlines),
+            expression: text,
+            chain: single ? nil : steps,
+            repeats: repeats
         ))
     }
 

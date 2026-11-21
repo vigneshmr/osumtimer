@@ -122,6 +122,20 @@ private struct GuideStep {
             slot: Slot(draft: "25m #deepwork")
         ),
         GuideStep(
+            title: "Chain timers",
+            how: Text("Separate lengths with commas — ")
+                + Text("12m,12m").foregroundStyle(Design.textPrimary)
+                + Text(" — and each starts the moment the one before rings. End with ")
+                + Text("repeat").foregroundStyle(Design.textPrimary)
+                + Text(" to go round for ever: ")
+                + Text("12m,repeat").foregroundStyle(Design.textPrimary)
+                + Text("."),
+            slot: running {
+                $0.chain = [25 * 60, 5 * 60]
+                $0.repeats = true
+            }
+        ),
+        GuideStep(
             title: "Pause",
             how: Text("\(glyph("pause.fill")) stops the clock where it is — Return does the same. \(glyph("play.fill")) carries on from there."),
             slot: running { _ in },

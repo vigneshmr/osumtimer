@@ -75,6 +75,17 @@ struct TimerItem: Identifiable, Codable, Equatable {
     /// silent.
     var chimeEvery: TimeInterval?
 
+    /// A chain: each step's length, in order. When a step rings, the next
+    /// starts at once — counted from the moment it rang, so a chain never
+    /// drifts by however late the alarm was dealt with. nil is a single timer.
+    var chain: [TimeInterval]?
+    /// The step running now, an index into `chain`.
+    var step: Int = 0
+    /// After the last step comes the first again, for ever.
+    var repeats: Bool = false
+    /// Which time round a repeating chain is on, from 1.
+    var round: Int = 1
+
     /// Everything set from the ⋯ menu: how the timer reads, and interval
     /// mode. Carried across reset and across a new duration in the same slot.
     struct Options: Codable, Equatable {
@@ -115,6 +126,7 @@ struct TimerItem: Identifiable, Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case id, tag, duration, endsAt, pausedRemaining, createdAt, target, input, display, direction, showTotal
         case intervals, stopped, chimeEvery
+        case chain, step, repeats, round
     }
 
     /// `display`, `direction` and `showTotal` arrived after timers were already
@@ -136,6 +148,10 @@ struct TimerItem: Identifiable, Codable, Equatable {
         intervals = try c.decodeIfPresent([Interval].self, forKey: .intervals)
         stopped = try c.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
         chimeEvery = try c.decodeIfPresent(TimeInterval.self, forKey: .chimeEvery)
+        chain = try c.decodeIfPresent([TimeInterval].self, forKey: .chain)
+        step = try c.decodeIfPresent(Int.self, forKey: .step) ?? 0
+        repeats = try c.decodeIfPresent(Bool.self, forKey: .repeats) ?? false
+        round = try c.decodeIfPresent(Int.self, forKey: .round) ?? 1
     }
 
     init(
@@ -290,5 +306,55 @@ struct TimerItem: Identifiable, Codable, Equatable {
         endsAt = nil
         stopped = false
         if intervals != nil { intervals = [Interval(name: "", start: 0)] }
+        if let chain {
+            step = 0
+            round = 1
+            duration = chain[0]
+            pausedRemaining = duration
+        }
+    }
+
+    // MARK: - Chains
+
+    /// Something comes after this step: a later one, or the first again.
+    var hasNextStep: Bool {
+        guard let chain, !stopped else { return false }
+        return repeats || step + 1 < chain.count
+    }
+
+    /// "2/3", "↻2", "2/3 ↻2" — where in the chain this is. nil for a single timer.
+    var stepLabel: String? {
+        guard let chain else { return nil }
+        let place = chain.count > 1 ? "\(step + 1)/\(chain.count)" : nil
+        let lap = repeats ? "↻\(round)" : nil
+        return [place, lap].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// The next step, started from where this one ended rather than from now.
+    mutating func advance(at now: Date = Date()) {
+        guard let chain, hasNextStep else { return }
+        let from = endsAt ?? now
+        step += 1
+        if step == chain.count { step = 0; round += 1 }
+        duration = chain[step]
+        endsAt = from.addingTimeInterval(duration)
+        pausedRemaining = nil
+        if intervals != nil { intervals = [Interval(name: "", start: 0)] }
+    }
+
+    /// Runs the chain forward over time that passed unseen — asleep, or the
+    /// app closed — so it lands on the step that would be running now. Whole
+    /// rounds of a repeating chain are skipped in one go.
+    mutating func catchUp(to now: Date = Date()) {
+        guard let chain, !isPaused else { return }
+        while hasFired(at: now), hasNextStep {
+            if repeats, step == chain.count - 1, let endsAt {
+                let cycle = chain.reduce(0, +)
+                let rounds = Int((now.timeIntervalSince(endsAt) / cycle).rounded(.down))
+                self.endsAt = endsAt.addingTimeInterval(Double(rounds) * cycle)
+                round += rounds
+            }
+            advance(at: now)
+        }
     }
 }

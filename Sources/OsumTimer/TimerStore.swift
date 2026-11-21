@@ -57,6 +57,7 @@ final class TimerStore {
         // drop its countdown, so the app never alarms about yesterday on launch.
         self.slots = deduped.map { slot in
             var slot = slot
+            slot.timer?.catchUp()
             if let timer = slot.timer, timer.hasFired() {
                 slot.options = timer.options
                 slot.timer = nil
@@ -116,6 +117,8 @@ final class TimerStore {
             showTotal: preferences.showTotal
         )
         if let kept { timer.options = kept }
+        timer.chain = parsed.chain
+        timer.repeats = parsed.repeats
         slots[index].timer = timer
         slots[index].options = nil
         catchUp()
@@ -359,6 +362,14 @@ final class TimerStore {
             ringFor: preferences.alarmRing.seconds
         )
         startRinging(id, for: preferences.alarmRing.seconds)
+        // A chain goes straight on to its next step while the alarm rings:
+        // the next step's clock is not held up by you getting to the first.
+        if timer.hasNextStep, let index = slots.firstIndex(where: { $0.id == id }) {
+            slots[index].timer!.advance()
+            slots[index].timer!.catchUp()
+            scheduleFire(slots[index])
+            persist()
+        }
         // The item stays, reading 0:00, until you deal with it — an item that
         // clears itself leaves you unsure whether it ever ran.
         tick = Date()

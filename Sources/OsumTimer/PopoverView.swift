@@ -585,6 +585,12 @@ private struct RunningPanel: View {
         HStack(spacing: 4) {
             Text(word)
                 .foregroundStyle(done ? Design.accent : Design.textSecondary)
+            // Where in a chain this is, so the next step starting is no surprise.
+            if let place = timer.stepLabel, !timer.stopped {
+                Text(place)
+                    .foregroundStyle(Design.textFaint)
+                    .help(timer.repeats ? "Chain, repeating" : "Chain")
+            }
             // The chime, so a tone mid-run is never a mystery.
             if let every = timer.chimeEvery, !over {
                 HStack(spacing: 1) {
